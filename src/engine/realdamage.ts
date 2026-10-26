@@ -1,6 +1,6 @@
 import { genId, typesIn } from './data';
 import type { Generation, Move, Specie } from './data';
-import { bestMove, combatant } from './calc';
+import { bestMove, combatant, loadCalc } from './calc';
 import type { Combatant } from './calc';
 import { autoMoves } from './moves';
 import { makeFeat } from './optimize';
@@ -22,6 +22,7 @@ export interface FoeSet {
 }
 
 export async function prepareFoes(gen: Generation, foes: Specie[]): Promise<FoeSet[]> {
+  await loadCalc();
   return Promise.all(foes.map(async (species) => {
     const moves = await autoMoves(gen, species);
     const build = suggestBuild(gen, species, moveObjects(gen, moves));
@@ -82,6 +83,7 @@ export async function buildMatchupTable(
   foes: FoeSet[],
   opts: TableOptions = {},
 ): Promise<Map<string, RealMatchup[]>> {
+  await loadCalc();
   const n = genId(gen);
   const types = typesIn(gen);
   const foeTypes = foes.map((f) => [...f.species.types]);

@@ -1,4 +1,4 @@
-import { Field, Generations as CalcGenerations, Move, Pokemon, calculate } from '@smogon/calc';
+import type * as CalcLib from '@smogon/calc';
 import { ALL_GENS, STATS } from './data';
 import type { StatKey } from './data';
 import type { Build } from './sets';
@@ -23,6 +23,18 @@ export interface FieldOptions {
   lightScreen: boolean;
   auroraVeil: boolean;
 }
+
+// The calculator library is large and only some features need it, so it is fetched on demand. Anything that calls
+// `calcDamage` must `await loadCalc()` first; until then calculations report that the calculator is still loading.
+let lib: typeof CalcLib | null = null;
+let loading: Promise<void> | null = null;
+
+export function loadCalc(): Promise<void> {
+  loading ??= import('@smogon/calc').then((m) => { lib = m; });
+  return loading;
+}
+
+export const calcReady = (): boolean => lib !== null;
 
 export const NO_BOOSTS = (): Record<StatKey, number> => ({ hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 });
 export const NO_FIELD: FieldOptions = { weather: '', terrain: '', crit: false, reflect: false, lightScreen: false, auroraVeil: false };
@@ -51,7 +63,7 @@ const fail = (error: string): DamageResult => ({ ok: false, error, min: 0, max: 
 /** The calc library covers every species and move ever released in its Gen 9 data, so "every gen" uses 9. */
 export const calcGen = (genNum: number) => (genNum === ALL_GENS ? 9 : genNum);
 
-function toPokemon(g: number, c: Combatant): Pokemon {
+function toPokemon(lib: typeof CalcLib, g: number, c: Combatant): CalcLib.Pokemon {
   const b = c.build;
   const opts: Record<string, unknown> = { level: b.level, status: c.status || undefined };
   if (g >= 3) {
@@ -64,11 +76,13 @@ function toPokemon(g: number, c: Combatant): Pokemon {
   const boosts: Record<string, number> = {};
   for (const k of STATS) if (k !== 'hp' && c.boosts[k]) boosts[k] = c.boosts[k];
   opts.boosts = boosts;
-  return new Pokemon(g as never, c.species, opts as never);
+  return new lib.Pokemon(g as never, c.species, opts as never);
 }
 
 export function calcDamage(genNum: number, attacker: Combatant, defender: Combatant, moveName: string, field: FieldOptions = NO_FIELD): DamageResult {
   const g = calcGen(genNum);
+  if (!lib) return fail('The damage calculator is still loading');
+  const { Move, Field, Generations: CalcGenerations, calculate } = lib;
   try {
     // The library quietly accepts unknown names, so check them against its own data first.
     const data = CalcGenerations.get(g as never);
@@ -76,8 +90,8 @@ export function calcDamage(genNum: number, attacker: Combatant, defender: Combat
     if (!data.species.get(id(attacker.species) as never)) return fail(`Unknown Pokémon: ${attacker.species}`);
     if (!data.species.get(id(defender.species) as never)) return fail(`Unknown Pokémon: ${defender.species}`);
     if (!data.moves.get(id(moveName) as never)) return fail(`Unknown move: ${moveName}`);
-    const A = toPokemon(g, attacker);
-    const D = toPokemon(g, defender);
+    const A = toPokemon(lib, g, attacker);
+    const D = toPokemon(lib, g, defender);
     const move = new Move(g as never, moveName, { isCrit: field.crit } as never);
     const f = new Field({
       gameType: 'Singles',

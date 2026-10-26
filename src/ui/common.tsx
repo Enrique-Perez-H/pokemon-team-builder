@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
-import { Sprites } from '@pkmn/img';
+import { Dex } from '@pkmn/dex';
 import type { TypeName } from '../engine/data';
 
 export const TYPE_COLORS: Record<string, string> = {
@@ -18,10 +18,33 @@ export function TypeBadge({ type, small }: { type: TypeName | string; small?: bo
   );
 }
 
+const toID = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+/** Showdown sprite ids: base species plus forme, each reduced to letters and digits ("Urshifu-Rapid-Strike" → urshifu-rapidstrike). */
+export function spriteId(name: string): string {
+  const sp = Dex.species.get(name);
+  if (!sp.exists) return toID(name);
+  const forme = sp.forme ? `-${toID(sp.forme)}` : '';
+  return toID(sp.baseSpecies) + forme;
+}
+
+/** Sprite locations to try in order: animated, then the static pixel sprite, then the 3D render. */
+export const spriteUrls = (name: string): string[] => {
+  const id = spriteId(name);
+  const base = 'https://play.pokemonshowdown.com/sprites';
+  return [`${base}/ani/${id}.gif`, `${base}/gen5/${id}.png`, `${base}/dex/${id}.png`];
+};
+
 export function Sprite({ name, size = 80, types }: { name: string; size?: number; types?: string[] }) {
-  const [failed, setFailed] = useState(false);
-  const url = Sprites.getPokemon(name, { gen: 'ani' }).url;
-  if (failed) {
+  const [attempt, setAttempt] = useState(0);
+  const [lastName, setLastName] = useState(name);
+  // A different Pokémon starts over from the first sprite location.
+  if (name !== lastName) {
+    setLastName(name);
+    setAttempt(0);
+  }
+  const urls = spriteUrls(name);
+  if (attempt >= urls.length) {
     return (
       <div className="sprite-fallback" style={{ width: size, height: size, background: TYPE_COLORS[types?.[0] ?? 'Normal'] }}>
         {name[0]}
@@ -31,11 +54,11 @@ export function Sprite({ name, size = 80, types }: { name: string; size?: number
   return (
     <img
       className="sprite"
-      src={url}
+      src={urls[attempt]}
       alt={name}
       loading="lazy"
       style={{ maxWidth: size, maxHeight: size }}
-      onError={() => setFailed(true)}
+      onError={() => setAttempt((a) => a + 1)}
     />
   );
 }

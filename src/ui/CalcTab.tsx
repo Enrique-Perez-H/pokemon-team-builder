@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { genId } from '../engine/data';
 import type { Generation, StatKey } from '../engine/data';
 import { autoMoves } from '../engine/moves';
-import { NO_BOOSTS, calcDamage } from '../engine/calc';
+import { NO_BOOSTS, calcDamage, calcReady, loadCalc } from '../engine/calc';
 import type { Combatant, DamageResult, FieldOptions, Status, Terrain, Weather } from '../engine/calc';
 import { computeStats, hasItems, hasNatures, suggestBuild } from '../engine/sets';
 import type { Build } from '../engine/sets';
@@ -44,6 +44,11 @@ export function CalcTab({ gen, slots, enemy }: Props) {
   const [weather, setWeather] = useState<Weather>('');
   const [terrain, setTerrain] = useState<Terrain>('');
   const [crit, setCrit] = useState(false);
+  const [ready, setReady] = useState(calcReady());
+
+  useEffect(() => {
+    if (!ready) loadCalc().then(() => setReady(true));
+  }, [ready]);
 
   const members = resolveSlots(gen, slots);
 
@@ -98,7 +103,9 @@ export function CalcTab({ gen, slots, enemy }: Props) {
         <SideCard title="Side B" gen={gen} side={def} onChange={setDef} slots={slots} members={members} enemy={enemy} fromSlot={fromSlot} fromSpecies={fromSpecies} />
       </div>
 
-      {att && def ? (
+      {!ready ? (
+        <p className="muted" role="status">Loading the damage calculator…</p>
+      ) : att && def ? (
         <div className="calc-grid">
           <Results gen={gen} from={att} to={def} field={field(def)} />
           <Results gen={gen} from={def} to={att} field={field(att)} />

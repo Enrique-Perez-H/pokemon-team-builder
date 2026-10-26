@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ALL_GENS } from '../engine/data';
+import { loadCalc } from '../engine/calc';
 import { GAME_BY_ID, GAME_LIST, gameData, loadGameData } from '../engine/games';
 import { validateTeam } from '../engine/rules';
 import { suggestPicks } from '../engine/suggest';
@@ -34,6 +35,12 @@ export function App() {
   const [dataVersion, setDataVersion] = useState(0);
   const [loadingGame, setLoadingGame] = useState(false);
   const gen = getGen(state.gen, state.game);
+  // Fetch the damage calculator shortly after first paint so it is ready by the time a feature needs it.
+  useEffect(() => {
+    const t = setTimeout(() => { loadCalc().catch(() => undefined); }, 1500);
+    return () => clearTimeout(t);
+  }, []);
+
   useEffect(() => {
     const id = state.game;
     if (!id || gameData(id)) return;

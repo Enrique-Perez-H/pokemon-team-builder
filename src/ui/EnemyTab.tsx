@@ -4,7 +4,7 @@ import type { Generation } from '../engine/data';
 import { defenseTable } from '../engine/analysis';
 import { bestAnswers, fighterFromMember, matchup, topCounters } from '../engine/counter';
 import type { Foe, Matchup } from '../engine/counter';
-import { bestMove, combatant } from '../engine/calc';
+import { bestMove, calcReady, combatant, loadCalc } from '../engine/calc';
 import { moveTypesOf } from '../engine/moves';
 import { prepareFoes, realMatchup, topCountersReal } from '../engine/realdamage';
 import type { FoeSet, RealCounter, RealMatchup } from '../engine/realdamage';
@@ -45,6 +45,7 @@ const fmt = (n: number) => (n > 0 ? `+${n.toFixed(1)}` : n.toFixed(1));
 export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, onAddToTeam, onLockAll }: Props) {
   const [picking, setPicking] = useState<number | null>(null);
   const [foeSets, setFoeSets] = useState<FoeSet[]>([]);
+  const [calcOk, setCalcOk] = useState(calcReady());
   const [real, setReal] = useState(true);
   const [realCounters, setRealCounters] = useState<Record<string, RealCounter[]>>({});
   const [dir, setDir] = useState<'mine' | 'theirs'>('mine');
@@ -59,6 +60,10 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
     () => enemy.flatMap((name) => { const s = gen.species.get(name); return s ? [s] : []; }),
     [gen, enemy],
   );
+
+  useEffect(() => {
+    if (!calcOk) loadCalc().then(() => setCalcOk(true));
+  }, [calcOk]);
 
   // Give each enemy Pokémon a concrete set: its likely attacking moves and a standard competitive build.
   useEffect(() => {
@@ -87,10 +92,10 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
       const fighter = fighterFromMember(gen, m);
       return foes.map((f) => {
         const fs = foeSets.find((x) => x.species.name === f.species.name);
-        return real && fs && slot.moves.length ? realMatchup(n, us, fs) : matchup(gen, fighter, f);
+        return real && calcOk && fs && slot.moves.length ? realMatchup(n, us, fs) : matchup(gen, fighter, f);
       });
     }),
-    [gen, slots, foeSets, species, real], // eslint-disable-line react-hooks/exhaustive-deps
+    [gen, slots, foeSets, species, real, calcOk], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const answers = matrix.length ? bestAnswers(matrix, foes.length) : [];
 
@@ -110,7 +115,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
 
   // Real damage: our chosen moves and builds against the enemy's likely moves on standard builds.
   const damage = useMemo(() => {
-    if (!foes.length) return null;
+    if (!foes.length || !calcOk) return null;
     const mineFull = mineInfo.map(({ slot, m }) => ({
       name: m.species.name, moves: slot.moves, c: combatant(m.species.name, buildFor(gen, slot, m.species, m.moves)),
     }));
@@ -121,7 +126,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
     const mineVsTheirs = mineFull.map((a) => theirs.map((d) => bestMove(n, a.c, d.c, a.moves)));
     const theirsVsMine = theirs.map((a) => mineFull.map((d) => bestMove(n, a.c, d.c, a.moves)));
     return { mineFull, theirs, mineVsTheirs, theirsVsMine };
-  }, [gen, slots, foeSets, species]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gen, slots, foeSets, species, calcOk]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const build = async () => {
     setBusy(true);

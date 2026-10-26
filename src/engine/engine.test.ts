@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { getGen, speciesPool, learnableMoves } from './data';
 import { defenseTable, coverageTable } from './analysis';
 import { newRule, validateTeam, wouldViolate } from './rules';
@@ -6,6 +6,9 @@ import { suggestPicks } from './suggest';
 import type { Member } from './types';
 
 const gen = getGen(9);
+
+// The damage calculator loads on demand in the app; tests load it once up front.
+beforeAll(async () => { await loadCalc(); });
 const mon = (name: string, ability?: string, moves: string[] = []): Member => ({
   species: gen.species.get(name)!,
   ability,
@@ -213,7 +216,7 @@ describe('counters', () => {
 
 import { computeStats, evTotal, itemList, normalizeEvs, suggestBuild, zeroEvs, perfectIvs } from './sets';
 import type { Build } from './sets';
-import { bestMove, calcDamage, NO_BOOSTS, NO_FIELD } from './calc';
+import { bestMove, calcDamage, loadCalc, NO_BOOSTS, NO_FIELD } from './calc';
 import type { Combatant } from './calc';
 
 describe('real stats', () => {
