@@ -80,3 +80,56 @@ describe('suggestions', () => {
     expect(picks[0].reasons.join()).toMatch(/Resists/);
   });
 });
+
+import { optimizeTeam, scoreSpecies } from './optimize';
+import { autoMoves } from './moves';
+
+describe('optimizer', () => {
+  const none = Array(6).fill(null);
+  it('builds a legal, balanced team and respects rules', () => {
+    const noLeg = newRule('no_legendaries');
+    const fe = newRule('fully_evolved');
+    const rules = [newRule('species_clause'), noLeg, fe];
+    const t0 = Date.now();
+    const res = optimizeTeam({ gen, rules, locked: none, megas: false });
+    const ms = Date.now() - t0;
+    expect(ms).toBeLessThan(8000);
+    expect(res.length).toBeGreaterThan(0);
+    expect(res[0].slots).toHaveLength(6);
+    expect(validateTeam(rules, res[0].slots)).toEqual([]);
+    expect(res[0].score).toBeGreaterThanOrEqual(res[res.length - 1].score);
+    // A decent team should not share an unresisted weakness across most members.
+    const worst = Math.max(...defenseTable(gen, res[0].slots.map((s) => ({ species: s, moves: [] }))).map((r) => r.weak - r.resist - r.immune));
+    expect(worst).toBeLessThanOrEqual(2);
+  });
+  it('keeps locked Pokémon and mono-type rules', () => {
+    const water = newRule('allowed_types');
+    water.params.types = ['Water'];
+    const locked = [gen.species.get('Vaporeon')!, null, null, null, null, null];
+    const res = optimizeTeam({ gen, rules: [newRule('species_clause'), water], locked, megas: false });
+    expect(res[0].slots[0].name).toBe('Vaporeon');
+    expect(res[0].slots.every((s) => s.types.includes('Water'))).toBe(true);
+  });
+  it('beats a naive same-type team', () => {
+    const res = optimizeTeam({ gen, rules: [newRule('species_clause')], locked: none, megas: false });
+    const naive = ['Charizard', 'Arcanine', 'Talonflame', 'Ceruledge', 'Skeledirge', 'Armarouge'].map((n) => gen.species.get(n)!);
+    expect(res[0].score).toBeGreaterThan(scoreSpecies(gen, naive).total + 5);
+  });
+  it('returns nothing when rules cannot be satisfied', () => {
+    const impossible = newRule('bst_range');
+    impossible.params.min = 790;
+    impossible.params.max = 800;
+    expect(optimizeTeam({ gen, rules: [impossible], locked: none, megas: false })).toEqual([]);
+  });
+});
+
+describe('autoMoves', () => {
+  it('picks STAB and coverage attacks', async () => {
+    const moves = await autoMoves(gen, gen.species.get('Garchomp')!);
+    expect(moves).toHaveLength(4);
+    const types = moves.map((m) => gen.moves.get(m)!.type);
+    expect(types).toContain('Ground');
+    expect(types).toContain('Dragon');
+    expect(new Set(types).size).toBe(4);
+  });
+});

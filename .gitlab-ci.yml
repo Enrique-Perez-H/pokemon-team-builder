@@ -1,0 +1,37 @@
+# Builds and tests on every pipeline; publishes to GitLab Pages from the default branch.
+# The site is served at https://<namespace>.gitlab.io/<project>/ and is installable as a PWA.
+image: node:22
+
+stages:
+  - test
+  - deploy
+
+cache:
+  key:
+    files:
+      - package-lock.json
+  paths:
+    - .npm/
+
+default:
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+
+test:
+  stage: test
+  script:
+    - npx tsc --noEmit
+    - npm test
+    - npm run build
+
+pages:
+  stage: deploy
+  script:
+    - npm run build
+    - rm -rf public
+    - mv dist public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

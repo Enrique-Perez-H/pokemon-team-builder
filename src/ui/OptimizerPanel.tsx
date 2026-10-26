@@ -1,0 +1,110 @@
+import { useState } from 'react';
+import type { Generation, Specie } from '../engine/data';
+import { DEFAULT_WEIGHTS, optimizeTeam } from '../engine/optimize';
+import type { OptimizedTeam, Weights } from '../engine/optimize';
+import { autoMoves } from '../engine/moves';
+import type { RuleInstance } from '../engine/rules';
+import { Sprite } from './common';
+import type { Slot } from './state';
+
+interface Props {
+  gen: Generation;
+  megas: boolean;
+  rules: RuleInstance[];
+  slots: (Slot | null)[];
+  onApply: (slots: (Slot | null)[]) => void;
+}
+
+const LABELS: Record<keyof Weights, string> = {
+  defense: 'Defense',
+  offense: 'Offense coverage',
+  stats: 'Raw stats',
+};
+
+export function OptimizerPanel({ gen, megas, rules, slots, onApply }: Props) {
+  const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
+  const [keep, setKeep] = useState(true);
+  const [results, setResults] = useState<OptimizedTeam[] | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [applying, setApplying] = useState(false);
+
+  const kept = slots.filter(Boolean).length;
+  const lockedSlots = keep ? slots : slots.map(() => null);
+
+  const run = () => {
+    setBusy(true);
+    setResults(null);
+    // Yield so the spinner paints before the (synchronous) search runs.
+    setTimeout(() => {
+      const locked = lockedSlots.map((s) => (s ? gen.species.get(s.species) ?? null : null));
+      setResults(optimizeTeam({ gen, rules, locked, megas, weights }));
+      setBusy(false);
+    }, 30);
+  };
+
+  const apply = async (team: OptimizedTeam) => {
+    setApplying(true);
+    const next = await Promise.all(
+      team.slots.map(async (sp: Specie, i): Promise<Slot> => {
+        const old = lockedSlots[i];
+        if (old && old.species === sp.name) return old;
+        return { species: sp.name, ability: team.abilities[i], moves: await autoMoves(gen, sp) };
+      }),
+    );
+    onApply(next);
+    setApplying(false);
+    setResults(null);
+  };
+
+  return (
+    <section className="panel optimizer">
+      <h2>Team optimizer</h2>
+      <p className="muted">
+        Searches every Pokémon allowed by your rules for the team with the best defensive profile,
+        type coverage and stats, then picks abilities and attacking moves.
+      </p>
+      <div className="weights">
+        {(Object.keys(LABELS) as (keyof Weights)[]).map((k) => (
+          <label key={k}>
+            <span>{LABELS[k]}</span>
+            <input type="range" min={0} max={3} step={0.5} value={weights[k]} onChange={(e) => setWeights({ ...weights, [k]: Number(e.target.value) })} />
+            <b>{weights[k]}×</b>
+          </label>
+        ))}
+      </div>
+      <div className="opt-actions">
+        <label className="check">
+          <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
+          Keep the {kept} Pokémon already on my team
+        </label>
+        <button className="btn primary" disabled={busy || applying} onClick={run}>
+          {busy ? 'Searching…' : kept && keep ? 'Fill remaining slots' : 'Build best team'}
+        </button>
+      </div>
+      {results && results.length === 0 && (
+        <p className="insight bad">No team satisfies these rules. Try relaxing one.</p>
+      )}
+      {results && results.length > 0 && (
+        <div className="opt-results">
+          {results.map((r, i) => (
+            <div key={i} className="opt-result">
+              <div className="opt-rank">#{i + 1}<small>{r.score.toFixed(1)}</small></div>
+              <div className="opt-team">
+                {r.slots.map((s, k) => (
+                  <div key={k} className="opt-mon" title={`${s.name}${r.abilities[k] ? ` (${r.abilities[k]})` : ''}`}>
+                    <Sprite name={s.name} size={44} types={s.types} />
+                    <small>{s.name}</small>
+                  </div>
+                ))}
+              </div>
+              <div className="opt-parts muted">
+                Def {r.parts.defense.toFixed(1)} · Off {r.parts.offense.toFixed(1)} · Stats {r.parts.stats.toFixed(1)}
+              </div>
+              <button className="btn primary" disabled={applying} onClick={() => apply(r)}>Use this team</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}

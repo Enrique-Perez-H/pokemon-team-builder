@@ -5,6 +5,7 @@ import { suggestPicks } from '../engine/suggest';
 import type { Member } from '../engine/types';
 import { AnalysisPanel } from './AnalysisPanel';
 import { MovePicker } from './MovePicker';
+import { OptimizerPanel } from './OptimizerPanel';
 import { PokemonPicker } from './PokemonPicker';
 import { RulesPanel } from './RulesPanel';
 import { TeamCard } from './TeamCard';
@@ -92,6 +93,7 @@ export function App() {
         </div>
         <aside className="side-col">
           <RulesPanel gen={gen} rules={state.rules} violated={violatedRules} onChange={(rules) => setState((st) => ({ ...st, rules }))} />
+          <OptimizerPanel gen={gen} megas={state.megas} rules={state.rules} slots={state.slots} onApply={(slots) => setState((st) => ({ ...st, slots }))} />
         </aside>
       </main>
 

@@ -128,3 +128,17 @@ select, input[type=text], input[type=search], input:not([type]), input[type=numb
 .move-table tbody tr:hover { background: var(--panel2); }
 .move-table tr.taken { opacity: .35; cursor: default; }
 .stab { margin-left: 6px; font-size: 10px; background: var(--accent); border-radius: 4px; padding: 0 5px; }
+
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn:disabled { opacity: .55; cursor: wait; }
+.optimizer .weights { display: grid; gap: 6px; margin: 10px 0; }
+.weights label { display: grid; grid-template-columns: 110px 1fr 36px; align-items: center; gap: 8px; }
+.weights b { text-align: right; font-size: 12px; }
+.opt-actions { display: flex; flex-direction: column; gap: 10px; align-items: stretch; }
+.opt-results { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+.opt-result { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.opt-rank { display: flex; justify-content: space-between; font-weight: 700; }
+.opt-team { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+.opt-mon { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
+.opt-mon small { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.opt-parts { font-size: 12px; }
