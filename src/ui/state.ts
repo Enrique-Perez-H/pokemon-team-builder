@@ -3,6 +3,9 @@ import { getGen } from '../engine/data';
 import { GAME_BY_ID } from '../engine/games';
 import type { Generation, TypeName } from '../engine/data';
 import { buildTeamSets } from '../engine/teamsets';
+import type { Format } from '../engine/roles';
+import { suggestTeraTypes } from '../engine/tera';
+import { hasTera } from '../engine/data';
 import type { OptimizedTeam } from '../engine/optimize';
 import { suggestBuild } from '../engine/sets';
 import type { Slot } from '../engine/team';
@@ -25,6 +28,8 @@ export interface BuilderState {
   enemy: string[];
   /** Optional team name shown in the header and used when saving. */
   name: string;
+  /** Singles or doubles: which support jobs matter and how damage is calculated. */
+  format?: Format;
 }
 
 const KEY = 'pokemon-team-builder:v1';
@@ -78,7 +83,7 @@ export function useBuilder() {
     }
   }, [state]);
   // A new team keeps the selected game, Mega setting and enemy team; it clears the team and the rules.
-  return { state, setState, reset: () => setState((st) => ({ ...initial(), gen: st.gen, game: st.game, megas: st.megas, rules: defaultRules(st.game), enemy: st.enemy })) };
+  return { state, setState, reset: () => setState((st) => ({ ...initial(), gen: st.gen, game: st.game, megas: st.megas, format: st.format, rules: defaultRules(st.game), enemy: st.enemy })) };
 }
 
 /** Turn saved slots into engine members; drops anything the generation does not know. */
@@ -91,7 +96,7 @@ export function resolveSlots(gen: Generation, slots: (Slot | null)[]): (Member |
       const mv = gen.moves.get(m);
       return mv ? [mv] : [];
     });
-    return { species, ability: s.ability, moves };
+    return { species, ability: s.ability, moves, tera: s.build?.tera };
   });
 }
 
@@ -107,16 +112,23 @@ export async function slotsFromResult(
   team: OptimizedTeam,
   kept: (Slot | null)[],
   foes?: TypeName[][],
+  format: Format = 'singles',
 ): Promise<Slot[]> {
   const keep = team.slots.map((sp, i) => (kept[i] && kept[i]!.species === sp.name ? kept[i]!.moves : null));
-  const sets = await buildTeamSets(gen, team.slots, { foes, keep });
+  const sets = await buildTeamSets(gen, team.slots, { foes, keep, format });
+  // Tera types are chosen for the finished team, so they patch what the team as a whole is weak to.
+  const finished = team.slots.map((sp, i) => ({
+    species: sp, ability: team.abilities[i],
+    moves: sets[i].flatMap((n) => { const m = gen.moves.get(n); return m ? [m] : []; }),
+  }));
+  const teras = hasTera(gen) ? suggestTeraTypes(gen, finished) : [];
   return team.slots.map((sp, i): Slot => {
     const old = kept[i];
     if (old && old.species === sp.name) return old;
     const moves = sets[i];
     const ability = team.abilities[i];
     const mv = moves.flatMap((n) => { const m = gen.moves.get(n); return m ? [m] : []; });
-    return { species: sp.name, ability, moves, build: suggestBuild(gen, sp, mv, ability) };
+    return { species: sp.name, ability, moves, build: { ...suggestBuild(gen, sp, mv, ability), tera: teras[i] } };
   });
 }
 
@@ -128,7 +140,7 @@ export function buildFor(gen: Generation, slot: Slot, species: Specie, moves: Mo
 
 // ---------- Sharing ----------
 
-type Shareable = Pick<BuilderState, 'gen' | 'game' | 'megas' | 'slots' | 'rules' | 'enemy' | 'name'>;
+type Shareable = Pick<BuilderState, 'gen' | 'game' | 'format' | 'megas' | 'slots' | 'rules' | 'enemy' | 'name'>;
 
 const toB64 = (text: string) => {
   const bytes = new TextEncoder().encode(text);
@@ -142,7 +154,7 @@ const fromB64 = (b64: string) => {
 };
 
 export const encodeShare = (st: Shareable): string =>
-  toB64(JSON.stringify({ gen: st.gen, game: st.game, megas: st.megas, slots: st.slots, rules: st.rules, enemy: st.enemy, name: st.name }));
+  toB64(JSON.stringify({ gen: st.gen, game: st.game, format: st.format, megas: st.megas, slots: st.slots, rules: st.rules, enemy: st.enemy, name: st.name }));
 
 /** Validate and rebuild a state from a shared payload; null when it is not usable. */
 export function decodeShare(payload: string): BuilderState | null {
@@ -153,7 +165,7 @@ export function decodeShare(payload: string): BuilderState | null {
     const game = typeof raw.game === 'string' && GAME_BY_ID[raw.game] ? raw.game : undefined;
     const gen = getGen(raw.gen, game);
     const slots = raw.slots.map((s) => (s && typeof s.species === 'string' && gen.species.get(s.species) ? { ...s, moves: Array.isArray(s.moves) ? s.moves.slice(0, 4) : [] } : null));
-    return { gen: raw.gen, game, megas: !!raw.megas, slots, rules: raw.rules.filter((r) => r && typeof r.type === 'string'), enemy: Array.isArray(raw.enemy) ? raw.enemy.filter((e) => typeof e === 'string' && gen.species.get(e)) : [], name: typeof raw.name === 'string' ? raw.name : '' };
+    return { gen: raw.gen, game, format: raw.format === 'doubles' ? 'doubles' : undefined, megas: !!raw.megas, slots, rules: raw.rules.filter((r) => r && typeof r.type === 'string'), enemy: Array.isArray(raw.enemy) ? raw.enemy.filter((e) => typeof e === 'string' && gen.species.get(e)) : [], name: typeof raw.name === 'string' ? raw.name : '' };
   } catch {
     return null;
   }
@@ -205,7 +217,7 @@ export function useSavedTeams() {
       const snapshot: SavedTeam = {
         id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random()),
         name: clean, savedAt: Date.now(),
-        state: { gen: st.gen, game: st.game, megas: st.megas, slots: st.slots, rules: st.rules, enemy: st.enemy, name: clean },
+        state: { gen: st.gen, game: st.game, format: st.format, megas: st.megas, slots: st.slots, rules: st.rules, enemy: st.enemy, name: clean },
       };
       // Saving under an existing name overwrites it.
       persist([snapshot, ...teams.filter((t) => t.name !== clean)]);

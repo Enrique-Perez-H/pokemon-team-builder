@@ -5,7 +5,9 @@ import type { Foe } from './counter';
 import { optimizeTeam, scoreFeats, shortlistCandidates, DEFAULT_WEIGHTS } from './optimize';
 import { typesIn } from './data';
 import type { OptimizedTeam, Weights } from './optimize';
+import { NO_FIELD } from './calc';
 import { buildMatchupTable, prepareFoes } from './realdamage';
+import type { Format } from './roles';
 import { roleCapabilities, withRoles } from './teamsets';
 import type { FoeSet, RealMatchup } from './realdamage';
 import { speciesViolations, TIER_ORDER } from './rules';
@@ -21,6 +23,8 @@ export interface VsFoesOptions {
   weights?: Weights;
   /** Judge matchups by real damage (slower, more accurate) instead of types and speed only. */
   real: boolean;
+  /** Singles (default) or doubles: affects spread-move damage and which support jobs count. */
+  format?: Format;
   /** How many Pokémon get the expensive real-damage treatment. */
   shortlist?: number;
   /** How much the general team-soundness score counts next to the matchups. */
@@ -46,22 +50,24 @@ export async function optimizeVsFoes(opts: VsFoesOptions): Promise<VsFoesResult>
   const foes: Foe[] = foeSets.map((f) => ({ species: f.species, attackTypes: moveTypesOf(gen, f.moves, f.species) }));
   const weights = opts.weights ?? DEFAULT_WEIGHTS;
   const share = opts.generalShare ?? 0.35;
+  const format = opts.format ?? 'singles';
+  const field = { ...NO_FIELD, gameType: format === 'doubles' ? ('Doubles' as const) : ('Singles' as const) };
 
   if (!opts.real) {
     const { objective, rank } = counterObjective(gen, foes, weights, share);
     const pool = shortlistCandidates({ gen, rules, locked, megas, rank }, opts.shortlist ?? 160);
     const lockedSpecies = locked.filter((s): s is Specie => !!s);
-    const caps = await roleCapabilities(gen, [...pool, ...lockedSpecies]);
-    return { teams: optimizeTeam({ gen, rules, locked, megas, rank, pool, objective: withRoles(objective, caps, weights.roles) }), foeSets, table: new Map() };
+    const caps = await roleCapabilities(gen, [...pool, ...lockedSpecies], format);
+    return { teams: optimizeTeam({ gen, rules, locked, megas, rank, pool, objective: withRoles(objective, caps, weights.roles, format) }), foeSets, table: new Map() };
   }
 
   const typeBased = counterObjective(gen, foes, weights, share);
   const shortlist = shortlistCandidates({ gen, rules, locked, megas, rank: typeBased.rank }, opts.shortlist ?? 110);
   const lockedSpecies = locked.filter((s): s is Specie => !!s);
-  const table = await buildMatchupTable(gen, [...shortlist, ...lockedSpecies], foeSets, { onProgress: opts.onProgress });
-  const caps = await roleCapabilities(gen, [...shortlist, ...lockedSpecies]);
+  const table = await buildMatchupTable(gen, [...shortlist, ...lockedSpecies], foeSets, { onProgress: opts.onProgress, field });
+  const caps = await roleCapabilities(gen, [...shortlist, ...lockedSpecies], format);
   const { objective, rank } = counterObjective(gen, foes, weights, share, table);
-  return { teams: optimizeTeam({ gen, rules, locked, megas, rank, pool: shortlist, objective: withRoles(objective, caps, weights.roles) }), foeSets, table };
+  return { teams: optimizeTeam({ gen, rules, locked, megas, rank, pool: shortlist, objective: withRoles(objective, caps, weights.roles, format) }), foeSets, table };
 }
 
 const tierIndex = (t: string) => {
@@ -97,6 +103,7 @@ export interface BalancedOptions {
   weights?: Weights;
   /** How many Pokémon the search considers. */
   shortlist?: number;
+  format?: Format;
 }
 
 /** The general optimizer: defence, coverage and stats as before, plus bonuses for support roles the team can fill. */
@@ -104,7 +111,8 @@ export async function optimizeBalanced(opts: BalancedOptions): Promise<Optimized
   const { gen, rules, locked, megas } = opts;
   const weights = opts.weights ?? DEFAULT_WEIGHTS;
   const pool = shortlistCandidates({ gen, rules, locked, megas }, opts.shortlist ?? 160);
-  const caps = await roleCapabilities(gen, [...pool, ...locked.filter((s): s is Specie => !!s)]);
+  const format = opts.format ?? 'singles';
+  const caps = await roleCapabilities(gen, [...pool, ...locked.filter((s): s is Specie => !!s)], format);
   const T = typesIn(gen).length;
-  return optimizeTeam({ gen, rules, locked, megas, weights, pool, objective: withRoles((F) => scoreFeats(F, T, weights), caps, weights.roles) });
+  return optimizeTeam({ gen, rules, locked, megas, weights, pool, objective: withRoles((F) => scoreFeats(F, T, weights), caps, weights.roles, format) });
 }

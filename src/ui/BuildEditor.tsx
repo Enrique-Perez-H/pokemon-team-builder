@@ -1,4 +1,4 @@
-import { STATS, STAT_LABEL, abilitiesOf } from '../engine/data';
+import { ALL_TYPES, STATS, STAT_LABEL, abilitiesOf, hasTera, typesIn } from '../engine/data';
 import type { Generation, Specie, StatKey } from '../engine/data';
 import { MAX_EV_TOTAL, computeStats, evTotal, hasItems, hasNatures, itemList, natureLabel, natureList, normalizeEvs } from '../engine/sets';
 import type { Build } from '../engine/sets';
@@ -44,6 +44,14 @@ export function BuildEditor({ gen, species, build, onChange, onSuggest, onClose 
             <select value={build.ability ?? ''} onChange={(e) => onChange({ ...build, ability: e.target.value || undefined })}>
               <option value="">Default</option>
               {abilities.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </label>
+        )}
+        {hasTera(gen) && (
+          <label>Tera type
+            <select value={build.tera ?? ''} onChange={(e) => onChange({ ...build, tera: (e.target.value || undefined) as Build['tera'] })}>
+              <option value="">None</option>
+              {(typesIn(gen).length ? typesIn(gen) : ALL_TYPES).map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
         )}

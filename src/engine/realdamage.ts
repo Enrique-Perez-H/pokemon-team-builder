@@ -1,7 +1,7 @@
 import { genId, typesIn } from './data';
 import type { Generation, Move, Specie } from './data';
-import { bestMove, combatant, loadCalc } from './calc';
-import type { Combatant } from './calc';
+import { NO_FIELD, bestMove, combatant, loadCalc } from './calc';
+import type { Combatant, FieldOptions } from './calc';
 import { autoMoves } from './moves';
 import { makeFeat } from './optimize';
 import { computeStats, suggestBuild } from './sets';
@@ -49,9 +49,10 @@ export function realMatchup(
   genNum: number,
   us: { combatant: Combatant; moves: string[]; speed: number },
   foe: FoeSet,
+  field: FieldOptions = NO_FIELD,
 ): RealMatchup {
-  const ours = bestMove(genNum, us.combatant, foe.combatant, us.moves);
-  const theirs = bestMove(genNum, foe.combatant, us.combatant, foe.moves);
+  const ours = bestMove(genNum, us.combatant, foe.combatant, us.moves, field);
+  const theirs = bestMove(genNum, foe.combatant, us.combatant, foe.moves, field);
   const ourPct = avgPct(ours);
   const theirPct = avgPct(theirs);
   const off = clamp(Math.log2((ourPct + 1) / EVEN), -2, 2);
@@ -70,6 +71,8 @@ export function realMatchup(
 export interface TableOptions {
   /** Called with 0–1 as candidates are processed. */
   onProgress?: (done: number) => void;
+  /** Battle conditions for the calculations (doubles applies spread-move reduction). */
+  field?: FieldOptions;
 }
 
 /**
@@ -94,7 +97,7 @@ export async function buildMatchupTable(
     const moves = await autoMoves(gen, sp, foeTypes);
     const build = suggestBuild(gen, sp, moveObjects(gen, moves), ability);
     const us = { combatant: combatant(sp.name, build), moves, speed: computeStats(gen, sp, build).spe };
-    table.set(sp.name, foes.map((foe) => realMatchup(n, us, foe)));
+    table.set(sp.name, foes.map((foe) => realMatchup(n, us, foe, opts.field)));
     // Hand control back regularly so the page stays responsive during the long loop.
     if (i % 8 === 7) {
       opts.onProgress?.((i + 1) / candidates.length);
@@ -118,10 +121,11 @@ export async function topCountersReal(
   megas: boolean,
   limit = 6,
   shortlist = 40,
+  field?: FieldOptions,
 ): Promise<RealCounter[]> {
   const asFoe: Foe = { species: foe.species, attackTypes: [...new Set(moveObjects(gen, foe.moves).map((m) => m.type))] };
   const candidates = topCounters(gen, rules, asFoe, megas, shortlist).map((c) => c.species);
-  const table = await buildMatchupTable(gen, candidates, [foe]);
+  const table = await buildMatchupTable(gen, candidates, [foe], { field });
   return candidates
     .map((species) => ({ species, matchup: table.get(species.name)![0] }))
     .sort((a, b) => b.matchup.score - a.matchup.score)

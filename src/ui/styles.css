@@ -290,3 +290,10 @@ select, input[type=text], input[type=search], input:not([type]), input[type=numb
 .holder { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
 .holder small { font-size: 11px; }
 @media (max-width: 700px) { .role-row { grid-template-columns: 1fr; } }
+
+.tera-toggle { margin-bottom: 8px; font-size: 13px; }
+.tera-select { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+
+.bring-row { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+.bring-mon { display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 96px; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel2); }
+.bring-mon.lead { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }

@@ -25,15 +25,17 @@ function power(m: Move, s: Specie): number {
  * moves that open the most new super-effective coverage. When `foes` (the defending types of each opposing Pokémon)
  * is given, coverage is measured against those targets instead of every single type.
  */
-export function pickAttacks(gen: Generation, species: Specie, all: Move[], count: number, foes?: TypeName[][]): Move[] {
+export function pickAttacks(gen: Generation, species: Specie, all: Move[], count: number, foes?: TypeName[][], doubles = false): Move[] {
   const pool = all.filter((m) => m.category !== 'Status' && m.basePower >= 40 && !risky(m));
+  // In doubles, moves that hit both opponents are worth more even after the spread damage reduction.
+  const pw = (m: Move) => power(m, species) * (doubles && m.target === 'allAdjacentFoes' ? 1.4 : 1);
   const targets: TypeName[][] = foes?.length ? foes : typesIn(gen).map((t) => [t]);
   const chosen: Move[] = [];
 
   for (const t of species.types) {
     if (chosen.length >= count) break;
-    const best = pool.filter((m) => m.type === t).sort((a, b) => power(b, species) - power(a, species))[0];
-    if (best && power(best, species) >= 40) chosen.push(best);
+    const best = pool.filter((m) => m.type === t).sort((a, b) => pw(b) - pw(a))[0];
+    if (best && pw(best) >= 40) chosen.push(best);
   }
 
   const hits = (m: Move) => new Set<number>(targets.flatMap((t, i) => (moveMultiplier(gen, m, t) > 1 ? [i] : [])));
@@ -45,7 +47,7 @@ export function pickAttacks(gen: Generation, species: Specie, all: Move[], count
     for (const m of pool) {
       if (chosen.includes(m) || chosen.some((c) => c.type === m.type)) continue;
       const gain = [...hits(m)].filter((t) => !covered.has(t)).length;
-      const val = gain * 18 + power(m, species) / 8;
+      const val = gain * 18 + pw(m) / 8;
       if (val > bestVal) { bestVal = val; best = m; }
     }
     if (!best) break;

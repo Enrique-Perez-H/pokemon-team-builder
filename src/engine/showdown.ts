@@ -1,4 +1,4 @@
-import { STATS } from './data';
+import { STATS, ALL_TYPES, hasTera } from './data';
 import type { Generation, StatKey } from './data';
 import { hasItems, hasNatures, perfectIvs, zeroEvs } from './sets';
 import type { Build } from './sets';
@@ -21,6 +21,7 @@ export function exportTeam(gen: Generation, slots: (Slot | null)[], buildOf: (sl
       const ability = slot.ability ?? b.ability;
       if (ability && gen.num >= 3) lines.push(`Ability: ${ability}`);
       if (b.level !== 100) lines.push(`Level: ${b.level}`);
+      if (b.tera && hasTera(gen)) lines.push(`Tera Type: ${b.tera}`);
       if (gen.num >= 3) {
         const evs = STATS.filter((k) => b.evs[k] > 0).map((k) => `${b.evs[k]} ${LABEL[k]}`);
         if (evs.length) lines.push(`EVs: ${evs.join(' / ')}`);
@@ -74,6 +75,10 @@ export function importTeam(gen: Generation, text: string): ImportResult {
         else warnings.push(`${species.name}: unknown move ${name}`);
       } else if (/^ability:/i.test(line)) ability = line.slice(line.indexOf(':') + 1).trim();
       else if (/^level:/i.test(line)) build.level = Math.max(1, Math.min(100, Number(line.split(':')[1]) || 100));
+      else if (/^tera type:/i.test(line)) {
+        const t = ALL_TYPES.find((x) => x.toLowerCase() === line.slice(line.indexOf(':') + 1).trim().toLowerCase());
+        if (t && hasTera(gen)) build.tera = t;
+      }
       else if (/^evs:/i.test(line)) parseStats(line.slice(4), build.evs);
       else if (/^ivs:/i.test(line)) parseStats(line.slice(4), build.ivs);
       else if (/nature$/i.test(line)) {

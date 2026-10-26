@@ -1,8 +1,8 @@
 import { learnableMoves } from './data';
 import type { Generation, Move, Specie, TypeName } from './data';
 import { pickAttacks } from './moves';
-import { ROLE_BY_ID, moveRoles } from './roles';
-import type { RoleId } from './roles';
+import { moveRoles, roleInfo } from './roles';
+import type { Format, RoleId } from './roles';
 import type { Feat, Weights } from './optimize';
 
 export interface TeamSetOptions {
@@ -10,6 +10,8 @@ export interface TeamSetOptions {
   foes?: TypeName[][];
   /** Existing moves per member. Members with moves here are left alone, but their roles count towards the team. */
   keep?: (string[] | null | undefined)[];
+  /** Singles (default) or doubles: changes which support jobs matter and favours spread attacks. */
+  format?: Format;
 }
 
 interface Profile {
@@ -32,7 +34,14 @@ const PREFERENCE: Partial<Record<RoleId, string[]>> = {
   recovery: ['recover', 'roost', 'softboiled', 'slackoff', 'synthesis', 'moonlight', 'morningsun', 'shoreup', 'wish', 'milkdrink'],
   pivot: ['uturn', 'voltswitch', 'flipturn', 'partingshot', 'teleport', 'chillyreception'],
   setup: ['swordsdance', 'dragondance', 'nastyplot', 'quiverdance', 'calmmind', 'bulkup', 'shellsmash', 'tailglow', 'coil', 'bellydrum'],
+  fakeout: ['fakeout', 'upperhand'],
+  redirection: ['followme', 'ragepowder'],
+  ally: ['helpinghand', 'wideguard', 'quickguard', 'coaching', 'lifedew', 'healpulse'],
+  protect: ['protect', 'detect', 'spikyshield', 'kingsshield', 'banefulbunker', 'burningbulwark', 'silktrap', 'obstruct'],
 };
+
+/** In doubles, speed control means Tailwind and Trick Room first; the singles list leads with Trick Room too but also paralysis. */
+const DOUBLES_SPEED = ['tailwind', 'trickroom', 'icywind', 'electroweb', 'thunderwave'];
 
 /** At most one Pokémon should carry each of these; others duplicating them is wasted space. */
 const ONE_PER_TEAM = new Set<RoleId>(['hazards', 'removal']);
@@ -59,19 +68,36 @@ function fit(role: RoleId, p: Profile, m: Move): number {
       if (p.attack < 90 || !((p.physical && boostsPhysical) || (!p.physical && boostsSpecial))) return -1;
       return p.attack / 3 + p.speed / 6 + p.bulk / 25;
     }
+    case 'fakeout':
+      return p.speed / 4 + p.attack / 6;
+    case 'redirection':
+      return p.bulk >= 240 ? p.bulk / 6 - p.attack / 8 : -1;
+    case 'ally':
+      return p.bulk / 10 + (110 - Math.min(110, p.attack)) / 8;
     default:
       return 0;
   }
 }
 
-const TARGETS: { role: RoleId; count: number }[] = [
-  { role: 'hazards', count: 1 },
-  { role: 'removal', count: 1 },
-  { role: 'speed', count: 1 },
-  { role: 'recovery', count: 2 },
-  { role: 'pivot', count: 1 },
-  { role: 'setup', count: 2 },
-];
+const TARGETS: Record<Format, { role: RoleId; count: number }[]> = {
+  singles: [
+    { role: 'hazards', count: 1 },
+    { role: 'removal', count: 1 },
+    { role: 'speed', count: 1 },
+    { role: 'recovery', count: 2 },
+    { role: 'pivot', count: 1 },
+    { role: 'setup', count: 2 },
+  ],
+  // Doubles: a free turn (Fake Out), a way to protect a setup partner, speed control, then Protect on everyone.
+  doubles: [
+    { role: 'fakeout', count: 1 },
+    { role: 'redirection', count: 1 },
+    { role: 'speed', count: 1 },
+    { role: 'pivot', count: 1 },
+    { role: 'ally', count: 1 },
+    { role: 'protect', count: 6 },
+  ],
+};
 
 const MAX_UTILITY = 2;
 
@@ -97,13 +123,14 @@ export async function buildTeamSets(gen: Generation, team: Specie[], opts: TeamS
     team.filter((_, i) => [...utility[i], ...(fixed[i] ? attacks[i] : [])].some((m) => moveRoles(m).includes(role))).length;
   const taken = new Set<string>(attacks.flatMap((ms, i) => (fixed[i] ? ms.map((m) => m.id as string) : [])));
 
-  for (const { role, count } of TARGETS) {
-    while (holders(role) < count) {
+  const format = opts.format ?? 'singles';
+  for (const { role, count } of TARGETS[format]) {
+    while (holders(role) < Math.min(count, team.length)) {
       let best: { i: number; move: Move; score: number } | undefined;
       team.forEach((_, i) => {
         if (fixed[i] || utility[i].length >= MAX_UTILITY) return;
         // Setup suits attackers; leave support jobs to the others when possible.
-        const prefs = PREFERENCE[role] ?? [];
+        const prefs = role === 'speed' && format === 'doubles' ? DOUBLES_SPEED : PREFERENCE[role] ?? [];
         prefs.forEach((id, rank) => {
           const move = lookups[i].get(id);
           // Judge the move by this generation's data: Teleport only pivots from Gen 8, for example.
@@ -123,24 +150,24 @@ export async function buildTeamSets(gen: Generation, team: Specie[], opts: TeamS
 
   return team.map((s, i) => {
     if (fixed[i]) return attacks[i].map((m) => m.name);
-    const atk = pickAttacks(gen, s, learn[i], 4 - utility[i].length, opts.foes);
+    const atk = pickAttacks(gen, s, learn[i], 4 - utility[i].length, opts.foes, format === 'doubles');
     return [...atk, ...utility[i]].map((m) => m.name);
   });
 }
 
 // ---------- Role awareness for the optimizer ----------
 
-const ASSIGNABLE = TARGETS.map((t) => t.role);
+const assignable = (format: Format): RoleId[] => TARGETS[format].map((t) => t.role);
 
 /** The support roles each Pokémon could actually fill: it learns a fitting move and its stats suit the job. */
-export async function roleCapabilities(gen: Generation, species: Specie[]): Promise<Map<string, RoleId[]>> {
+export async function roleCapabilities(gen: Generation, species: Specie[], format: Format = 'singles'): Promise<Map<string, RoleId[]>> {
   const out = new Map<string, RoleId[]>();
   for (const s of species) {
     if (out.has(s.name)) continue;
     const moves = new Map((await learnableMoves(gen, s.name)).map((m) => [m.id as string, m]));
     const p = profile(s);
-    const roles = ASSIGNABLE.filter((role) =>
-      (PREFERENCE[role] ?? []).some((id) => {
+    const roles = assignable(format).filter((role) =>
+      (role === 'speed' && format === 'doubles' ? DOUBLES_SPEED : PREFERENCE[role] ?? []).some((id) => {
         const m = moves.get(id);
         return !!m && moveRoles(m).includes(role) && fit(role, p, m) >= 0;
       }),
@@ -151,19 +178,20 @@ export async function roleCapabilities(gen: Generation, species: Specie[]): Prom
 }
 
 /** Worth of the support jobs a team can cover when each member takes at most two of them. */
-export function roleBonus(capabilities: RoleId[][]): number {
+export function roleBonus(capabilities: RoleId[][], format: Format = 'singles'): number {
   const used = capabilities.map(() => 0);
-  const order = [...ASSIGNABLE].sort((a, b) => ROLE_BY_ID[b].weight - ROLE_BY_ID[a].weight);
+  const order = assignable(format)
+    .flatMap((r) => { const ri = roleInfo(r, format); return ri ? [{ role: r, ...ri }] : []; })
+    .sort((a, b) => b.weight - a.weight);
   let total = 0;
-  for (const role of order) {
-    const info = ROLE_BY_ID[role];
+  for (const { role, cap, weight } of order) {
     const candidates = capabilities
       .map((caps, i) => ({ i, n: caps.length, ok: caps.includes(role) && used[i] < MAX_UTILITY }))
       .filter((c) => c.ok)
       .sort((a, b) => a.n - b.n); // specialists first, so flexible Pokémon stay free for other jobs
-    for (const c of candidates.slice(0, info.cap)) {
+    for (const c of candidates.slice(0, cap)) {
       used[c.i]++;
-      total += info.weight;
+      total += weight;
     }
   }
   return total;
@@ -174,12 +202,13 @@ export function withRoles(
   objective: (feats: Feat[]) => { total: number; parts: Weights },
   capabilities: Map<string, RoleId[]>,
   roleWeight: number,
+  format: Format = 'singles',
 ) {
   const SCALE = 2.5;
   return (feats: Feat[]) => {
     const base = objective(feats);
     if (roleWeight <= 0) return base;
-    const bonus = roleBonus(feats.map((f) => capabilities.get(f.s.name) ?? [])) * SCALE * roleWeight;
+    const bonus = roleBonus(feats.map((f) => capabilities.get(f.s.name) ?? []), format) * SCALE * roleWeight;
     return { total: base.total + bonus, parts: { ...base.parts, roles: bonus } };
   };
 }

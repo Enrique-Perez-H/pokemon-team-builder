@@ -4,7 +4,9 @@ import type { Generation } from '../engine/data';
 import { defenseTable } from '../engine/analysis';
 import { bestAnswers, fighterFromMember, matchup, topCounters } from '../engine/counter';
 import type { Foe, Matchup } from '../engine/counter';
-import { bestMove, calcReady, combatant, loadCalc } from '../engine/calc';
+import { NO_FIELD, bestMove, calcReady, combatant, loadCalc } from '../engine/calc';
+import { planBring } from '../engine/doubles';
+import type { Format } from '../engine/roles';
 import { moveTypesOf } from '../engine/moves';
 import { prepareFoes, realMatchup, topCountersReal } from '../engine/realdamage';
 import type { FoeSet, RealCounter, RealMatchup } from '../engine/realdamage';
@@ -30,6 +32,7 @@ interface Props {
   onApply: (slots: Slot[]) => void;
   onAddToTeam: (species: string) => void;
   onLockAll: (locked: boolean) => void;
+  format: Format;
 }
 
 const cellClass = (m: Matchup) =>
@@ -42,7 +45,7 @@ const pct = (x: number) => (x >= 100 ? '100%+' : `${Math.round(x)}%`);
 
 const fmt = (n: number) => (n > 0 ? `+${n.toFixed(1)}` : n.toFixed(1));
 
-export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, onAddToTeam, onLockAll }: Props) {
+export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, onAddToTeam, onLockAll, format }: Props) {
   const [picking, setPicking] = useState<number | null>(null);
   const [foeSets, setFoeSets] = useState<FoeSet[]>([]);
   const [calcOk, setCalcOk] = useState(calcReady());
@@ -55,6 +58,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
   const [run, setRun] = useState<VsFoesResult | null>(null);
   const results = run?.teams ?? null;
   const n = genId(gen);
+  const field = { ...NO_FIELD, gameType: format === 'doubles' ? ('Doubles' as const) : ('Singles' as const) };
 
   const species = useMemo(
     () => enemy.flatMap((name) => { const s = gen.species.get(name); return s ? [s] : []; }),
@@ -92,12 +96,13 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
       const fighter = fighterFromMember(gen, m);
       return foes.map((f) => {
         const fs = foeSets.find((x) => x.species.name === f.species.name);
-        return real && calcOk && fs && slot.moves.length ? realMatchup(n, us, fs) : matchup(gen, fighter, f);
+        return real && calcOk && fs && slot.moves.length ? realMatchup(n, us, fs, field) : matchup(gen, fighter, f);
       });
     }),
-    [gen, slots, foeSets, species, real, calcOk], // eslint-disable-line react-hooks/exhaustive-deps
+    [gen, slots, foeSets, species, real, calcOk, format], // eslint-disable-line react-hooks/exhaustive-deps
   );
   const answers = matrix.length ? bestAnswers(matrix, foes.length) : [];
+  const bring = format === 'doubles' && mineInfo.length >= 2 && foes.length ? planBring(matrix, mineInfo.map((x) => x.m)) : null;
 
   // Quick type-based counters show immediately; real-damage ones replace them when ready.
   const counters = useMemo(
@@ -107,11 +112,11 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
   useEffect(() => {
     if (!real || !foeSets.length) { setRealCounters({}); return; }
     let live = true;
-    Promise.all(foeSets.map((f) => topCountersReal(gen, rules, f, megas, 6))).then((lists) => {
+    Promise.all(foeSets.map((f) => topCountersReal(gen, rules, f, megas, 6, 40, field))).then((lists) => {
       if (live) setRealCounters(Object.fromEntries(foeSets.map((f, i) => [f.species.name, lists[i]])));
     });
     return () => { live = false; };
-  }, [real, foeSets, rules, megas, gen]);
+  }, [real, foeSets, rules, megas, gen, format]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Real damage: our chosen moves and builds against the enemy's likely moves on standard builds.
   const damage = useMemo(() => {
@@ -123,10 +128,10 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
       const fs = foeSets.find((x) => x.species.name === f.species.name);
       return fs ? [{ name: f.species.name, moves: fs.moves, c: fs.combatant }] : [];
     });
-    const mineVsTheirs = mineFull.map((a) => theirs.map((d) => bestMove(n, a.c, d.c, a.moves)));
-    const theirsVsMine = theirs.map((a) => mineFull.map((d) => bestMove(n, a.c, d.c, a.moves)));
+    const mineVsTheirs = mineFull.map((a) => theirs.map((d) => bestMove(n, a.c, d.c, a.moves, field)));
+    const theirsVsMine = theirs.map((a) => mineFull.map((d) => bestMove(n, a.c, d.c, a.moves, field)));
     return { mineFull, theirs, mineVsTheirs, theirsVsMine };
-  }, [gen, slots, foeSets, species, calcOk]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gen, slots, foeSets, species, calcOk, format]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const build = async () => {
     setBusy(true);
@@ -134,7 +139,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
     setProgress(0);
     try {
       const locked = slots.map((s) => (s?.locked ? gen.species.get(s.species) ?? null : null));
-      setRun(await optimizeVsFoes({ gen, rules, locked, megas, foes: species, real, onProgress: setProgress }));
+      setRun(await optimizeVsFoes({ gen, rules, locked, megas, foes: species, real, format, onProgress: setProgress }));
     } finally {
       setBusy(false);
     }
@@ -142,7 +147,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
 
   const apply = async (team: OptimizedTeam) => {
     setApplying(true);
-    onApply(await slotsFromResult(gen, team, slots.map((s) => (s?.locked ? s : null)), foeTypes));
+    onApply(await slotsFromResult(gen, team, slots.map((s) => (s?.locked ? s : null)), foeTypes, format));
     setApplying(false);
   };
 
@@ -249,6 +254,37 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
                   })}
                 </div>
               </>
+            )}
+          </section>
+        )}
+
+        {bring && (
+          <section className="panel bring">
+            <h2>Doubles: who to bring</h2>
+            <p className="muted">
+              Four of your six are brought. These answer the enemy team best, based on the matchup table above
+              ({format === 'doubles' ? 'spread-move damage included' : ''}).
+            </p>
+            <div className="bring-row">
+              {bring.bring.map((i) => {
+                const lead = bring.leads.includes(i);
+                const m = mineInfo[i].m;
+                return (
+                  <div key={i} className={`bring-mon${lead ? ' lead' : ''}`}>
+                    <Sprite name={m.species.name} size={48} types={m.species.types} />
+                    <strong>{m.species.name}</strong>
+                    <small className="muted">{lead ? 'Lead' : 'Back'}</small>
+                  </div>
+                );
+              })}
+            </div>
+            {bring.uncovered.length > 0 ? (
+              <div className="insight warn">! Not well handled by these four: {bring.uncovered.map((e) => foes[e].species.name).join(', ')}.</div>
+            ) : (
+              <div className="insight good">✓ Every enemy Pokémon has a good answer among the four.</div>
+            )}
+            {mineInfo.length > 4 && (
+              <small className="muted">Left at home: {mineInfo.filter((_, i) => !bring.bring.includes(i)).map((x) => x.m.species.name).join(', ')}.</small>
             )}
           </section>
         )}

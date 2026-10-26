@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ALL_GENS } from '../engine/data';
+import { ALL_GENS, hasTera } from '../engine/data';
+import { suggestTeraTypes } from '../engine/tera';
 import { loadCalc } from '../engine/calc';
 import { GAME_BY_ID, GAME_LIST, gameData, loadGameData } from '../engine/games';
 import { validateTeam } from '../engine/rules';
@@ -35,6 +36,7 @@ export function App() {
   const [dataVersion, setDataVersion] = useState(0);
   const [loadingGame, setLoadingGame] = useState(false);
   const gen = getGen(state.gen, state.game);
+  const format = state.format ?? 'singles';
   // Fetch the damage calculator shortly after first paint so it is ready by the time a feature needs it.
   useEffect(() => {
     const t = setTimeout(() => { loadCalc().catch(() => undefined); }, 1500);
@@ -88,7 +90,7 @@ export function App() {
       const species = idx.map((i) => gen.species.get(state.slots[i]!.species)!);
       const regenerate = (i: number) => (all ? !state.slots[i]!.locked : state.slots[i]!.moves.length === 0);
       const keep = idx.map((i) => (regenerate(i) ? null : state.slots[i]!.moves));
-      const sets = await buildTeamSets(gen, species, { keep });
+      const sets = await buildTeamSets(gen, species, { keep, format });
       setState((st) => ({
         ...st,
         slots: st.slots.map((s, i) => {
@@ -96,12 +98,27 @@ export function App() {
           if (!s || k < 0 || !regenerate(i)) return s;
           const sp = species[k];
           const mv = sets[k].flatMap((n) => { const m = gen.moves.get(n); return m ? [m] : []; });
-          return { ...s, moves: sets[k], build: suggestBuild(gen, sp, mv, s.ability) };
+          return { ...s, moves: sets[k], build: { ...suggestBuild(gen, sp, mv, s.ability), tera: s.build?.tera } };
         }),
       }));
     } finally {
       setFilling(false);
     }
+  };
+
+  /** Choose Tera types for the team, looking at the weaknesses the whole team shares. Locked Pokémon keep theirs. */
+  const suggestTeras = () => {
+    const idx = state.slots.flatMap((s, i) => (s && members[i] ? [i] : []));
+    const teras = suggestTeraTypes(gen, idx.map((i) => members[i]!));
+    setState((st) => ({
+      ...st,
+      slots: st.slots.map((s, i) => {
+        const k = idx.indexOf(i);
+        if (!s || k < 0 || s.locked) return s;
+        const sp = gen.species.get(s.species)!;
+        return { ...s, build: { ...(s.build ?? suggestBuild(gen, sp)), tera: teras[k] } };
+      }),
+    }));
   };
 
   const swapSlots = (a: number, b: number) =>
@@ -197,6 +214,10 @@ export function App() {
               />
               Allow Mega forms
             </label>
+            <div className="seg" role="group" aria-label="Battle format">
+              <button className={format === 'singles' ? 'on' : ''} onClick={() => setState((st) => ({ ...st, format: 'singles' }))}>Singles</button>
+              <button className={format === 'doubles' ? 'on' : ''} onClick={() => setState((st) => ({ ...st, format: 'doubles' }))}>Doubles</button>
+            </div>
             {loadingGame && <small className="muted" role="status">Loading game data…</small>}
           </div>
         </div>
@@ -205,6 +226,7 @@ export function App() {
       {tab === 'enemy' && (
         <EnemyTab
           key={dataVersion}
+          format={format}
           gen={gen}
           megas={state.megas}
           rules={state.rules}
@@ -218,7 +240,7 @@ export function App() {
       )}
 
       {tab === 'calc' && (
-        <div className="calc-wrap"><CalcTab gen={gen} slots={state.slots} enemy={state.enemy} /></div>
+        <div className="calc-wrap"><CalcTab gen={gen} slots={state.slots} enemy={state.enemy} format={format} /></div>
       )}
 
       {tab === 'build' && (
@@ -263,13 +285,18 @@ export function App() {
             <button className="btn" disabled={filling || !team.length} onClick={() => autoFill(true)} title="Rebuild the moves of every unlocked Pokémon">
               Rebuild all moves
             </button>
+            {hasTera(gen) && (
+              <button className="btn" disabled={!team.length} onClick={suggestTeras} title="Pick a Tera type for each Pokémon that patches the team's shared weaknesses">
+                Suggest Tera types
+              </button>
+            )}
             <small className="muted">Sets are built for the whole team: one hazard setter, one remover, recovery, a pivot and setup where they suit.</small>
           </div>
-          <AnalysisPanel gen={gen} team={team} real={realStats} />
+          <AnalysisPanel gen={gen} team={team} real={realStats} format={format} />
         </div>
         <aside className="side-col">
           <RulesPanel gen={gen} rules={state.rules} violated={violatedRules} onChange={(rules) => setState((st) => ({ ...st, rules }))} />
-          <OptimizerPanel gen={gen} megas={state.megas} rules={state.rules} slots={state.slots} onApply={(slots) => setState((st) => ({ ...st, slots }))} onLockAll={setLocks} />
+          <OptimizerPanel gen={gen} megas={state.megas} rules={state.rules} slots={state.slots} format={format} onApply={(slots) => setState((st) => ({ ...st, slots }))} onLockAll={setLocks} />
         </aside>
       </main>
       )}

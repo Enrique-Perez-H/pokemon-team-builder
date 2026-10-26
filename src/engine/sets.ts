@@ -1,5 +1,5 @@
 import { STATS } from './data';
-import type { Generation, Move, Specie, StatKey } from './data';
+import type { Generation, Move, Specie, StatKey, TypeName } from './data';
 
 /** Everything beyond species and moves that decides a Pokémon's real stats and damage. */
 export interface Build {
@@ -10,6 +10,8 @@ export interface Build {
   ivs: Record<StatKey, number>;
   item?: string;
   ability?: string;
+  /** Tera type (Gen 9 only). */
+  tera?: TypeName;
 }
 
 export const MAX_EV = 252;

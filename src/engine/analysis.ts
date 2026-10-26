@@ -2,7 +2,8 @@ import { STATS, bst, typesIn, isDamaging } from './data';
 import type { Generation, StatKey, TypeName } from './data';
 import { defensiveMultiplier, moveMultiplier, typeMultiplier } from './types';
 import type { Member } from './types';
-import { EXPECTED_ROLES, ROLE_BY_ID, teamRoles } from './roles';
+import { ROLE_BY_ID, expectedRoles, teamRoles } from './roles';
+import type { Format } from './roles';
 
 // ---------- Defense ----------
 
@@ -15,9 +16,10 @@ export interface DefenseRow {
   immune: number;
 }
 
-export function defenseTable(gen: Generation, team: Member[]): DefenseRow[] {
+/** Weaknesses and resistances per type. With `tera`, members that have a Tera type are shown Terastallized. */
+export function defenseTable(gen: Generation, team: Member[], tera = false): DefenseRow[] {
   return typesIn(gen).map((type) => {
-    const perMember = team.map((m) => defensiveMultiplier(gen, m, type));
+    const perMember = team.map((m) => defensiveMultiplier(gen, m, type, tera));
     return {
       type,
       perMember,
@@ -109,7 +111,7 @@ export interface Insight {
   text: string;
 }
 
-export function insights(gen: Generation, team: Member[]): Insight[] {
+export function insights(gen: Generation, team: Member[], format: Format = 'singles'): Insight[] {
   if (!team.length) return [];
   const out: Insight[] = [];
   const def = defenseTable(gen, team);
@@ -137,7 +139,7 @@ export function insights(gen: Generation, team: Member[]): Insight[] {
   // Support roles only make sense to judge once most of the team has moves.
   if (team.length >= 4 && team.filter((m) => m.moves.length).length >= team.length - 1) {
     const roles = teamRoles(team);
-    const missing = EXPECTED_ROLES.filter((r) => roles[r].length === 0).map((r) => ROLE_BY_ID[r].label.toLowerCase());
+    const missing = expectedRoles(format).filter((r) => roles[r].length === 0).map((r) => ROLE_BY_ID[r].label.toLowerCase());
     if (missing.length) out.push({ level: 'warn', text: `No ${missing.join(', ')} among the chosen moves.` });
   }
   if (!out.some((i) => i.level !== 'good')) out.push({ level: 'good', text: 'No glaring weaknesses found.' });

@@ -1,6 +1,6 @@
 import type * as CalcLib from '@smogon/calc';
 import { ALL_GENS, STATS } from './data';
-import type { StatKey } from './data';
+import type { StatKey, TypeName } from './data';
 import type { Build } from './sets';
 
 export type Status = '' | 'brn' | 'par' | 'psn' | 'tox' | 'slp' | 'frz';
@@ -13,9 +13,13 @@ export interface Combatant {
   build: Build;
   boosts: Record<StatKey, number>;
   status: Status;
+  /** Terastallized into this type for the calculation (Gen 9). */
+  tera?: TypeName;
 }
 
 export interface FieldOptions {
+  /** Doubles applies the 25% spread-move damage reduction and other two-on-two rules. */
+  gameType: 'Singles' | 'Doubles';
   weather: Weather;
   terrain: Terrain;
   crit: boolean;
@@ -37,7 +41,7 @@ export function loadCalc(): Promise<void> {
 export const calcReady = (): boolean => lib !== null;
 
 export const NO_BOOSTS = (): Record<StatKey, number> => ({ hp: 0, atk: 0, def: 0, spa: 0, spd: 0, spe: 0 });
-export const NO_FIELD: FieldOptions = { weather: '', terrain: '', crit: false, reflect: false, lightScreen: false, auroraVeil: false };
+export const NO_FIELD: FieldOptions = { gameType: 'Singles', weather: '', terrain: '', crit: false, reflect: false, lightScreen: false, auroraVeil: false };
 
 export interface DamageResult {
   ok: boolean;
@@ -73,6 +77,7 @@ function toPokemon(lib: typeof CalcLib, g: number, c: Combatant): CalcLib.Pokemo
     opts.ability = b.ability || undefined;
   }
   if (g >= 2) opts.item = b.item || undefined;
+  if (g >= 9 && c.tera) opts.teraType = c.tera;
   const boosts: Record<string, number> = {};
   for (const k of STATS) if (k !== 'hp' && c.boosts[k]) boosts[k] = c.boosts[k];
   opts.boosts = boosts;
@@ -94,7 +99,7 @@ export function calcDamage(genNum: number, attacker: Combatant, defender: Combat
     const D = toPokemon(lib, g, defender);
     const move = new Move(g as never, moveName, { isCrit: field.crit } as never);
     const f = new Field({
-      gameType: 'Singles',
+      gameType: field.gameType,
       weather: field.weather || undefined,
       terrain: field.terrain || undefined,
       defenderSide: { isReflect: field.reflect, isLightScreen: field.lightScreen, isAuroraVeil: field.auroraVeil },

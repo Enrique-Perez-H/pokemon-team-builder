@@ -5,6 +5,8 @@ export interface Member {
   species: Specie;
   ability?: string;
   moves: Move[];
+  /** Tera type chosen for the Pokémon (Gen 9). It only changes typing when Terastallized. */
+  tera?: TypeName;
 }
 
 // @pkmn damageTaken codes: 0 = neutral, 1 = weak, 2 = resist, 3 = immune
@@ -31,9 +33,10 @@ const ABILITY_HALVE: Record<string, TypeName[]> = {
   Heatproof: ['Fire'],
 };
 
-/** Damage multiplier of an attacking type against a member, including defensive abilities. */
-export function defensiveMultiplier(gen: Generation, member: Member, atk: TypeName): number {
-  let m = typeMultiplier(gen, atk, member.species.types);
+/** Damage multiplier of an attacking type against a member, including defensive abilities (and Tera typing when `terastallized`). */
+export function defensiveMultiplier(gen: Generation, member: Member, atk: TypeName, terastallized = false): number {
+  const types = terastallized && member.tera ? [member.tera] : member.species.types;
+  let m = typeMultiplier(gen, atk, types);
   const ab = gen.num >= 3 ? member.ability : undefined;
   if (ab) {
     if (ABILITY_IMMUNE[ab] === atk) return 0;

@@ -523,7 +523,7 @@ describe('roles', () => {
     expect(roles('Extreme Speed')).toContain('priority');
     expect(roles('Fake Out')).not.toContain('priority');
     expect(roles('Earthquake')).toEqual([]);
-    expect(ROLES.every((r) => r.cap > 0 && r.weight > 0)).toBe(true);
+    expect(ROLES.every((r) => r.cap > 0 && (r.weight > 0 || r.doubles.weight > 0))).toBe(true);
   });
   it('maps team roles to the members holding them', () => {
     const team: Member[] = [
@@ -710,5 +710,149 @@ describe('role moves follow the generation', () => {
     const g9 = getGen(9);
     expect(moveRoles(g9.moves.get('Teleport')!)).toContain('pivot');
     expect(moveRoles(g1.moves.get('Teleport')!)).not.toContain('pivot');
+  });
+});
+
+import { suggestTeraTypes } from './tera';
+import { hasTera, typesIn } from './data';
+import { defensiveMultiplier } from './types';
+
+describe('tera', () => {
+  const mem = (n: string, moves: string[] = []): Member => ({ species: gen.species.get(n)!, moves: moves.map((m) => gen.moves.get(m)!) });
+  it('only exists where Terastallization does', () => {
+    expect(hasTera(getGen(9))).toBe(true);
+    expect(hasTera(getGen(9, 'scarlet-violet'))).toBe(true);
+    expect(hasTera(getGen(9, 'legends-za'))).toBe(false);
+    expect(hasTera(getGen(8))).toBe(false);
+    expect(hasTera(getGen(ALL_GENS))).toBe(true);
+  });
+  it('applies Tera typing to defence only when asked', () => {
+    const charizard = { ...mem('Charizard'), tera: 'Water' as const };
+    const rock = (tera: boolean) => defenseTable(gen, [charizard], tera).find((r) => r.type === 'Rock')!.perMember[0];
+    expect(rock(false)).toBe(4);
+    expect(rock(true)).toBe(1);
+    const electric = (tera: boolean) => defenseTable(gen, [charizard], tera).find((r) => r.type === 'Electric')!.perMember[0];
+    expect(electric(true)).toBe(2);
+    expect(defenseTable(gen, [mem('Charizard')], true).find((r) => r.type === 'Rock')!.perMember[0]).toBe(4); // no tera chosen
+  });
+  it('suggests valid, useful Tera types', () => {
+    const team = [mem('Charizard', ['Flamethrower', 'Air Slash']), mem('Talonflame', ['Brave Bird']), mem('Corviknight', ['Brave Bird']), mem('Garchomp', ['Earthquake', 'Outrage'])];
+    const teras = suggestTeraTypes(gen, team);
+    expect(teras).toHaveLength(4);
+    for (const t of teras) expect(typesIn(gen)).toContain(t);
+    expect(suggestTeraTypes(gen, team)).toEqual(teras); // deterministic
+    // Three Rock-weak flyers: at least one of them should patch it by changing type
+    const rockPatchers = team.slice(0, 3).filter((m, i) => defensiveMultiplier(gen, { ...m, tera: teras[i] }, 'Rock', true) <= 1 && defensiveMultiplier(gen, m, 'Rock') > 1);
+    expect(rockPatchers.length).toBeGreaterThanOrEqual(1);
+    // a suggestion never leaves a Pokémon with more weaknesses than it started with
+    const weakCount = (m: Member, tera: boolean) => defenseTable(gen, [m], tera).filter((r) => r.perMember[0] > 1).length;
+    const garchomp = mem('Garchomp', ['Earthquake']);
+    const [pick] = suggestTeraTypes(gen, [garchomp]);
+    expect(weakCount({ ...garchomp, tera: pick }, true)).toBeLessThanOrEqual(weakCount(garchomp, false));
+  });
+  it('flows through the calculator and Showdown format', async () => {
+    const att = { species: 'Garchomp', build: { ...suggestBuild(gen, gen.species.get('Garchomp')!), ability: 'Rough Skin' }, boosts: NO_BOOSTS(), status: '' as const };
+    const def = { species: 'Corviknight', build: suggestBuild(gen, gen.species.get('Corviknight')!), boosts: NO_BOOSTS(), status: '' as const };
+    expect(calcDamage(9, att, def, 'Earthquake').ko).toBe('No effect'); // Flying is immune to Ground
+    expect(calcDamage(9, att, { ...def, tera: 'Water' }, 'Earthquake').max).toBeGreaterThan(0);
+    const slot: Slot = { species: 'Garchomp', moves: ['Earthquake'], build: { ...att.build, tera: 'Fire' } };
+    const text = exportTeam(gen, [slot], (s) => s.build!);
+    expect(text).toContain('Tera Type: Fire');
+    expect(importTeam(gen, text).slots[0].build?.tera).toBe('Fire');
+    expect(exportTeam(getGen(8), [slot], (s) => s.build!)).not.toContain('Tera Type');
+  });
+});
+
+import { planBring } from './doubles';
+import { roleInfo, rolesFor, expectedRoles } from './roles';
+import type { Matchup } from './counter';
+
+describe('doubles', () => {
+  const mv = (n: string) => gen.moves.get(n)!;
+  it('recognises doubles-only roles', () => {
+    expect(moveRoles(mv('Follow Me'))).toContain('redirection');
+    expect(moveRoles(mv('Rage Powder'))).toContain('redirection');
+    expect(moveRoles(mv('Fake Out'))).toEqual(['fakeout']);
+    expect(moveRoles(mv('Helping Hand'))).toContain('ally');
+    expect(moveRoles(mv('Wide Guard'))).toContain('ally');
+    expect(moveRoles(mv('Protect'))).toContain('protect');
+    expect(moveRoles(mv('Endure'))).not.toContain('protect');
+    expect(moveRoles(mv('Rock Slide'))).toContain('spread');
+    expect(moveRoles(mv('Earthquake'))).not.toContain('spread'); // also hits your partner
+    expect(moveRoles(mv('Icy Wind'))).toEqual(expect.arrayContaining(['spread', 'speed']));
+  });
+  it('weights roles by format', () => {
+    expect(roleInfo('hazards', 'singles')!.weight).toBeGreaterThan(roleInfo('hazards', 'doubles')!.weight);
+    expect(roleInfo('speed', 'doubles')!.weight).toBeGreaterThan(roleInfo('speed', 'singles')!.weight);
+    expect(roleInfo('fakeout', 'singles')).toBeNull();
+    expect(rolesFor('singles').map((r) => r.id)).not.toContain('protect');
+    expect(rolesFor('doubles').map((r) => r.id)).not.toContain('hazards');
+    expect(rolesFor('doubles').map((r) => r.id)).toEqual(expect.arrayContaining(['fakeout', 'redirection', 'protect', 'spread']));
+    expect(expectedRoles('doubles')).toContain('protect');
+  });
+  it('builds doubles sets: Protect, Fake Out, redirection, speed control, spread', async () => {
+    const names = ['Incineroar', 'Amoonguss', 'Whimsicott', 'Rillaboom', 'Garchomp', 'Gholdengo'];
+    const team = names.map((n) => gen.species.get(n)!);
+    const sets = await buildTeamSets(gen, team, { format: 'doubles' });
+    const members: Member[] = sets.map((moves, i) => ({ species: team[i], moves: moves.map((m) => gen.moves.get(m)!) }));
+    const roles = teamRoles(members);
+    expect(roles.protect.length).toBeGreaterThanOrEqual(4);
+    expect(roles.fakeout.length).toBeGreaterThanOrEqual(1);
+    expect(roles.redirection.length).toBe(1);
+    expect(roles.speed.length).toBeGreaterThanOrEqual(1);
+    for (const m of members) {
+      expect(m.moves.length).toBeLessThanOrEqual(4);
+      expect(new Set(m.moves.map((x) => x.id)).size).toBe(m.moves.length);
+      expect(m.moves.filter((x) => x.category !== 'Status').length).toBeGreaterThanOrEqual(1);
+    }
+    // singles sets on the same team do not bother with Protect or redirection
+    const singles = await buildTeamSets(gen, team, { format: 'singles' });
+    const sRoles = teamRoles(singles.map((moves, i) => ({ species: team[i], moves: moves.map((m) => gen.moves.get(m)!) })));
+    expect(sRoles.redirection.length).toBe(0);
+    expect(sRoles.protect.length).toBeLessThan(roles.protect.length);
+  });
+  it('applies the spread-move reduction in doubles', () => {
+    const garchomp = { species: 'Garchomp', build: suggestBuild(gen, gen.species.get('Garchomp')!), boosts: NO_BOOSTS(), status: '' as const };
+    const target = { species: 'Charizard', build: suggestBuild(gen, gen.species.get('Charizard')!), boosts: NO_BOOSTS(), status: '' as const };
+    const singles = calcDamage(9, garchomp, target, 'Rock Slide', NO_FIELD).max;
+    const doubles = calcDamage(9, garchomp, target, 'Rock Slide', { ...NO_FIELD, gameType: 'Doubles' }).max;
+    expect(doubles / singles).toBeCloseTo(0.75, 1);
+    // single-target moves are unaffected
+    expect(calcDamage(9, garchomp, target, 'Stone Edge', { ...NO_FIELD, gameType: 'Doubles' }).max).toBe(calcDamage(9, garchomp, target, 'Stone Edge', NO_FIELD).max);
+  });
+  it('plans which four to bring and who leads', () => {
+    const cell = (score: number): Matchup => ({ score, off: 0, def: 0, speed: 0 });
+    // members 0-3 each handle a different enemy well; 4 and 5 handle nothing
+    const matrix = [
+      [cell(2.5), cell(-1), cell(-1)],
+      [cell(-1), cell(2.5), cell(-1)],
+      [cell(-1), cell(-1), cell(2.5)],
+      [cell(1), cell(1), cell(1)],
+      [cell(-2), cell(-2), cell(-2)],
+      [cell(-1.5), cell(-1.5), cell(-1.5)],
+    ];
+    const team: Member[] = Array.from({ length: 6 }, (_, i) => ({
+      species: gen.species.get(['Incineroar', 'Garchomp', 'Gholdengo', 'Rillaboom', 'Magikarp', 'Caterpie'][i]) ?? gen.species.get('Garchomp')!,
+      moves: i === 0 ? [mv('Fake Out'), mv('Protect')] : [],
+    }));
+    const plan = planBring(matrix, team)!;
+    expect(plan.bring.sort()).toEqual([0, 1, 2, 3]);
+    expect(plan.leads).toHaveLength(2);
+    expect(plan.leads.every((l) => plan.bring.includes(l))).toBe(true);
+    expect(plan.leads).toContain(0); // the Fake Out user opens
+    expect(plan.uncovered).toEqual([]);
+    expect(planBring([], [])).toBeNull();
+  });
+  it('optimizes for doubles', async () => {
+    const rules = [newRule('species_clause'), newRule('no_legendaries'), newRule('no_paradox')];
+    const res = await optimizeBalanced({ gen, rules, locked: Array(6).fill(null), megas: false, format: 'doubles' });
+    expect(res.length).toBeGreaterThan(0);
+    expect(validateTeam(rules, res[0].slots)).toEqual([]);
+    expect(res[0].parts.roles).toBeGreaterThan(0);
+    const caps = await roleCapabilities(gen, res[0].slots, 'doubles');
+    const all = res[0].slots.flatMap((s) => caps.get(s.name)!);
+    expect(all).toContain('protect');
+    expect(all).toContain('speed');
+    expect(roleBonus([['fakeout', 'protect'], ['redirection']], 'doubles')).toBeGreaterThan(roleBonus([[]], 'doubles'));
   });
 });

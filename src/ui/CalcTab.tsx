@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { genId } from '../engine/data';
+import { ALL_TYPES, genId, hasTera, typesIn } from '../engine/data';
 import type { Generation, StatKey } from '../engine/data';
 import { autoMoves } from '../engine/moves';
 import { NO_BOOSTS, calcDamage, calcReady, loadCalc } from '../engine/calc';
@@ -10,6 +10,7 @@ import { BuildEditor } from './BuildEditor';
 import { MovePicker } from './MovePicker';
 import { PokemonPicker } from './PokemonPicker';
 import { Sprite, TypeBadge } from './common';
+import type { Format } from '../engine/roles';
 import { buildFor, resolveSlots, TEAM_SIZE } from './state';
 import type { Slot } from './state';
 
@@ -19,6 +20,8 @@ interface Side {
   moves: string[];
   boosts: Record<StatKey, number>;
   status: Status;
+  /** '' none, 'build' = the build's Tera type, otherwise a type name. */
+  tera: string;
   reflect: boolean;
   lightScreen: boolean;
   auroraVeil: boolean;
@@ -30,20 +33,25 @@ const STATUSES: { v: Status; label: string }[] = [
   { v: 'psn', label: 'Poisoned' }, { v: 'tox', label: 'Badly poisoned' }, { v: 'slp', label: 'Asleep' }, { v: 'frz', label: 'Frozen' },
 ];
 
-const asCombatant = (s: Side): Combatant => ({ species: s.species, build: s.build, boosts: s.boosts, status: s.status });
+const asCombatant = (s: Side): Combatant => ({
+  species: s.species, build: s.build, boosts: s.boosts, status: s.status,
+  tera: ((s.tera === 'build' ? s.build.tera : s.tera) || undefined) as Combatant['tera'],
+});
 
 interface Props {
   gen: Generation;
   slots: (Slot | null)[];
   enemy: string[];
+  format: Format;
 }
 
-export function CalcTab({ gen, slots, enemy }: Props) {
+export function CalcTab({ gen, slots, enemy, format }: Props) {
   const [att, setAtt] = useState<Side | null>(null);
   const [def, setDef] = useState<Side | null>(null);
   const [weather, setWeather] = useState<Weather>('');
   const [terrain, setTerrain] = useState<Terrain>('');
   const [crit, setCrit] = useState(false);
+  const [gameType, setGameType] = useState<'Singles' | 'Doubles'>(format === 'doubles' ? 'Doubles' : 'Singles');
   const [ready, setReady] = useState(calcReady());
 
   useEffect(() => {
@@ -58,7 +66,7 @@ export function CalcTab({ gen, slots, enemy }: Props) {
     if (!slot || !m) return null;
     return {
       species: m.species.name, build: buildFor(gen, slot, m.species, m.moves), moves: slot.moves,
-      boosts: NO_BOOSTS(), status: '', reflect: false, lightScreen: false, auroraVeil: false,
+      boosts: NO_BOOSTS(), status: '', tera: '', reflect: false, lightScreen: false, auroraVeil: false,
     };
   };
 
@@ -68,7 +76,7 @@ export function CalcTab({ gen, slots, enemy }: Props) {
     if (!sp) return null;
     const moves = await autoMoves(gen, sp);
     const mv = moves.flatMap((n) => { const m = gen.moves.get(n); return m ? [m] : []; });
-    return { species: sp.name, build: suggestBuild(gen, sp, mv), moves, boosts: NO_BOOSTS(), status: '', reflect: false, lightScreen: false, auroraVeil: false };
+    return { species: sp.name, build: suggestBuild(gen, sp, mv), moves, boosts: NO_BOOSTS(), status: '', tera: '', reflect: false, lightScreen: false, auroraVeil: false };
   };
 
   // Start with the first team member against the first enemy, when there are any.
@@ -77,7 +85,7 @@ export function CalcTab({ gen, slots, enemy }: Props) {
     if (!def && enemy[0]) fromSpecies(enemy[0]).then(setDef);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const field = (target: Side): FieldOptions => ({ weather, terrain, crit, reflect: target.reflect, lightScreen: target.lightScreen, auroraVeil: target.auroraVeil });
+  const field = (target: Side): FieldOptions => ({ gameType, weather, terrain, crit, reflect: target.reflect, lightScreen: target.lightScreen, auroraVeil: target.auroraVeil });
 
   return (
     <div className="calc">
@@ -92,6 +100,11 @@ export function CalcTab({ gen, slots, enemy }: Props) {
           <select value={terrain} onChange={(e) => setTerrain(e.target.value as Terrain)}>
             <option value="">None</option><option value="Electric">Electric</option><option value="Grassy">Grassy</option>
             <option value="Psychic">Psychic</option><option value="Misty">Misty</option>
+          </select>
+        </label>
+        <label>Battle
+          <select value={gameType} onChange={(e) => setGameType(e.target.value as 'Singles' | 'Doubles')} title="Doubles applies the 25% spread-move reduction">
+            <option value="Singles">Singles</option><option value="Doubles">Doubles</option>
           </select>
         </label>
         <label className="check"><input type="checkbox" checked={crit} onChange={(e) => setCrit(e.target.checked)} /> Critical hits</label>
@@ -196,6 +209,15 @@ function SideCard({ title, gen, side, onChange, slots, members, enemy, fromSlot,
               </select>
             </label>
           </div>
+          {hasTera(gen) && (
+            <label className="tera-select">Terastallized
+              <select value={side.tera} onChange={(e) => patch({ tera: e.target.value })}>
+                <option value="">No</option>
+                {side.build.tera && <option value="build">As built: {side.build.tera}</option>}
+                {(typesIn(gen).length ? typesIn(gen) : ALL_TYPES).map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+          )}
           <div className="screens">
             <label className="check"><input type="checkbox" checked={side.reflect} onChange={(e) => patch({ reflect: e.target.checked })} /> Reflect</label>
             <label className="check"><input type="checkbox" checked={side.lightScreen} onChange={(e) => patch({ lightScreen: e.target.checked })} /> Light Screen</label>

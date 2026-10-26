@@ -5,6 +5,7 @@ import { optimizeBalanced, optimizeVsFoes, pickThreats } from '../engine/search'
 import type { OptimizedTeam, Weights } from '../engine/optimize';
 import type { RuleInstance } from '../engine/rules';
 import { Sprite } from './common';
+import type { Format } from '../engine/roles';
 import { slotsFromResult } from './state';
 import type { Slot } from './state';
 
@@ -15,6 +16,7 @@ interface Props {
   slots: (Slot | null)[];
   onApply: (slots: (Slot | null)[]) => void;
   onLockAll: (locked: boolean) => void;
+  format: Format;
 }
 
 const LABELS: Record<keyof Weights, string> = {
@@ -32,7 +34,7 @@ const WEIGHT_PRESETS: { label: string; w: Weights }[] = [
   { label: 'Raw power', w: { defense: 0.5, offense: 0.5, stats: 3, roles: 0 } },
 ];
 
-export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }: Props) {
+export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll, format }: Props) {
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [results, setResults] = useState<OptimizedTeam[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -55,11 +57,11 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }:
       if (threats) {
         // Real-damage mode: judge teams against the strongest Pokémon these rules allow.
         const foes = pickThreats(gen, rules, megas, 10);
-        const r = await optimizeVsFoes({ gen, rules, locked, megas, foes, weights, real: true, generalShare: 1, onProgress: setProgress });
+        const r = await optimizeVsFoes({ gen, rules, locked, megas, foes, weights, real: true, generalShare: 1, format, onProgress: setProgress });
         setBenchmark(foes.map((f) => f.name));
         setResults(r.teams);
       } else {
-        setResults(await optimizeBalanced({ gen, rules, locked, megas, weights }));
+        setResults(await optimizeBalanced({ gen, rules, locked, megas, weights, format }));
       }
     } finally {
       setBusy(false);
@@ -68,7 +70,7 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }:
 
   const apply = async (team: OptimizedTeam) => {
     setApplying(true);
-    onApply(await slotsFromResult(gen, team, lockedSlots));
+    onApply(await slotsFromResult(gen, team, lockedSlots, undefined, format));
     setApplying(false);
     setResults(null);
   };

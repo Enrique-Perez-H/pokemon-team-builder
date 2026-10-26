@@ -3,7 +3,8 @@ import { STATS, STAT_LABEL } from '../engine/data';
 import type { Generation, StatKey } from '../engine/data';
 import { coverageTable, defenseTable, insights, memberStats, teamAverages, teamReport } from '../engine/analysis';
 import type { Member } from '../engine/types';
-import { EXPECTED_ROLES, ROLES, teamRoles } from '../engine/roles';
+import { coreRoles, expectedRoles, rolesFor, teamRoles } from '../engine/roles';
+import type { Format } from '../engine/roles';
 import { Sprite, TypeBadge, TYPE_COLORS } from './common';
 
 type Tab = 'defense' | 'offense' | 'roles' | 'stats';
@@ -17,9 +18,17 @@ function multClass(m: number) {
 }
 
 function Defense({ gen, team }: { gen: Generation; team: Member[] }) {
-  const rows = defenseTable(gen, team);
+  const [tera, setTera] = useState(false);
+  const anyTera = team.some((m) => m.tera);
+  const rows = defenseTable(gen, team, tera && anyTera);
   return (
     <div className="table-wrap">
+      {anyTera && (
+        <label className="check tera-toggle">
+          <input type="checkbox" checked={tera} onChange={(e) => setTera(e.target.checked)} />
+          Show Terastallized typing (members with a Tera type)
+        </label>
+      )}
       <table className="matrix">
         <thead>
           <tr>
@@ -72,15 +81,15 @@ function Offense({ gen, team }: { gen: Generation; team: Member[] }) {
   );
 }
 
-function Roles({ team }: { team: Member[] }) {
+function Roles({ team, format }: { team: Member[]; format: Format }) {
   const roles = teamRoles(team);
   const anyMoves = team.some((m) => m.moves.length);
   if (!anyMoves) return <p className="muted">Choose moves for your Pokémon (or use “Fill empty moves” on the builder) to see which support jobs your team covers.</p>;
   return (
     <div className="roles">
-      {ROLES.map((r) => {
+      {rolesFor(format).map((r) => {
         const holders = roles[r.id];
-        const expected = EXPECTED_ROLES.includes(r.id);
+        const expected = expectedRoles(format).includes(r.id);
         return (
           <div key={r.id} className={`role-row${holders.length ? ' has' : expected ? ' missing' : ''}`}>
             <div className="role-name">
@@ -146,7 +155,7 @@ function Stats({ team, real }: { team: Member[]; real?: Record<StatKey, number>[
   );
 }
 
-function Report({ gen, team }: { gen: Generation; team: Member[] }) {
+function Report({ gen, team, format }: { gen: Generation; team: Member[]; format: Format }) {
   const r = teamReport(gen, team);
   const tile = (label: string, value: string, sub: string, level: 'good' | 'warn' | 'bad') => (
     <div className={`tile ${level}`}>
@@ -156,7 +165,7 @@ function Report({ gen, team }: { gen: Generation; team: Member[] }) {
     </div>
   );
   const roles = teamRoles(team);
-  const core = ['hazards', 'removal', 'recovery', 'pivot', 'speed', 'setup'] as const;
+  const core = coreRoles(format);
   const covered = core.filter((c) => roles[c].length > 0).length;
   const anyMoves = team.some((m) => m.moves.length);
   const rolesTile = anyMoves
@@ -184,9 +193,9 @@ function Report({ gen, team }: { gen: Generation; team: Member[] }) {
   );
 }
 
-export function AnalysisPanel({ gen, team, real }: { gen: Generation; team: Member[]; real?: Record<StatKey, number>[] }) {
+export function AnalysisPanel({ gen, team, real, format = 'singles' }: { gen: Generation; team: Member[]; real?: Record<StatKey, number>[]; format?: Format }) {
   const [tab, setTab] = useState<Tab>('defense');
-  const notes = insights(gen, team);
+  const notes = insights(gen, team, format);
   return (
     <section className="panel analysis">
       <div className="tabs">
@@ -200,10 +209,10 @@ export function AnalysisPanel({ gen, team, real }: { gen: Generation; team: Memb
         <p className="muted">Add Pokémon to see the analysis.</p>
       ) : (
         <>
-          <Report gen={gen} team={team} />
+          <Report gen={gen} team={team} format={format} />
           {tab === 'defense' && <Defense gen={gen} team={team} />}
           {tab === 'offense' && <Offense gen={gen} team={team} />}
-          {tab === 'roles' && <Roles team={team} />}
+          {tab === 'roles' && <Roles team={team} format={format} />}
           {tab === 'stats' && <Stats team={team} real={real} />}
           <div className="insights">
             {notes.map((n, i) => <div key={i} className={`insight ${n.level}`}>{n.level === 'good' ? '✓' : '!'} {n.text}</div>)}

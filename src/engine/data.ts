@@ -68,6 +68,9 @@ export function getGen(n: number, game?: string): Generation {
 /** The game a Generation object was made for, if any. */
 export const gameIdOf = (gen: Generation): string | undefined => gameOfGen.get(gen);
 
+/** Terastallization exists in Gen 9 (Scarlet/Violet), and in the every-generation view that uses Gen 9 rules. */
+export const hasTera = (gen: Generation): boolean => gen.num === 9 && gameOfGen.get(gen) !== 'legends-za';
+
 /** Numeric id for mechanics (the all-generations view uses Gen 9 rules). */
 export const genId = (gen: Generation): number => (gen === allGen ? ALL_GENS : gen.num);
 

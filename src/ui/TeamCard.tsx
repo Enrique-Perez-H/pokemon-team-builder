@@ -1,4 +1,4 @@
-import { STATS, STAT_LABEL, abilitiesOf, bst } from '../engine/data';
+import { STATS, STAT_LABEL, abilitiesOf, bst, hasTera } from '../engine/data';
 import { computeStats, hasItems, hasNatures } from '../engine/sets';
 import type { Build } from '../engine/sets';
 import type { Generation } from '../engine/data';
@@ -89,7 +89,7 @@ export function TeamCard({ gen, index, slot, member, issues, build, onEditBuild,
 
       {build && (
         <button className="build-summary" onClick={onEditBuild} title="Edit level, nature, EVs, IVs and item">
-          <span>{hasNatures(gen) ? build.nature : `Lv ${build.level}`}{hasItems(gen) && build.item ? ` · ${build.item}` : ''}</span>
+          <span>{hasNatures(gen) ? build.nature : `Lv ${build.level}`}{hasItems(gen) && build.item ? ` · ${build.item}` : ''}{hasTera(gen) && build.tera ? <> · Tera <TypeBadge type={build.tera} small /></> : ''}</span>
           <small className="muted">Edit build ›</small>
         </button>
       )}
