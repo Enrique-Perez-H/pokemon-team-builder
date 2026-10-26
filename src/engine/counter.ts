@@ -129,7 +129,7 @@ export function counterObjective(
       def += sorted[0].def;
     });
     const general = F.length ? scoreFeats(F, types.length, weights).total * generalShare : 0;
-    return { total: answers + general, parts: { defense: def, offense: off, stats: general } };
+    return { total: answers + general, parts: { defense: def, offense: off, stats: general, roles: 0 } };
   };
   const rank = (f: Feat) => vs(f).reduce((a, m) => a + Math.max(-1, m.score), 0) + f.bst / 120;
   return { objective, rank };

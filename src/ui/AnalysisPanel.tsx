@@ -3,9 +3,10 @@ import { STATS, STAT_LABEL } from '../engine/data';
 import type { Generation, StatKey } from '../engine/data';
 import { coverageTable, defenseTable, insights, memberStats, teamAverages, teamReport } from '../engine/analysis';
 import type { Member } from '../engine/types';
+import { EXPECTED_ROLES, ROLES, teamRoles } from '../engine/roles';
 import { Sprite, TypeBadge, TYPE_COLORS } from './common';
 
-type Tab = 'defense' | 'offense' | 'stats';
+type Tab = 'defense' | 'offense' | 'roles' | 'stats';
 
 function multLabel(m: number) {
   return m === 0 ? '0' : m === 0.25 ? '¼' : m === 0.5 ? '½' : m === 1 ? '' : String(m);
@@ -71,6 +72,36 @@ function Offense({ gen, team }: { gen: Generation; team: Member[] }) {
   );
 }
 
+function Roles({ team }: { team: Member[] }) {
+  const roles = teamRoles(team);
+  const anyMoves = team.some((m) => m.moves.length);
+  if (!anyMoves) return <p className="muted">Choose moves for your Pokémon (or use “Fill empty moves” on the builder) to see which support jobs your team covers.</p>;
+  return (
+    <div className="roles">
+      {ROLES.map((r) => {
+        const holders = roles[r.id];
+        const expected = EXPECTED_ROLES.includes(r.id);
+        return (
+          <div key={r.id} className={`role-row${holders.length ? ' has' : expected ? ' missing' : ''}`}>
+            <div className="role-name">
+              <b>{r.label}</b>
+              <small className="muted">{r.description}</small>
+            </div>
+            <div className="role-holders">
+              {holders.length ? holders.map((h) => (
+                <span key={h.member} className="holder" title={h.moves.join(', ')}>
+                  <Sprite name={h.name} size={26} />
+                  <span>{h.name}<small className="muted"> {h.moves.join(', ')}</small></span>
+                </span>
+              )) : <span className={expected ? 'bad-text' : 'muted'}>{expected ? 'Missing' : '—'}</span>}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Stats({ team, real }: { team: Member[]; real?: Record<StatKey, number>[] }) {
   const base = teamAverages(team);
   const shown = (m: Member, i: number, k: StatKey) => (real?.[i] ? real[i][k] : m.species.baseStats[k]);
@@ -124,12 +155,20 @@ function Report({ gen, team }: { gen: Generation; team: Member[] }) {
       <small className="muted">{sub}</small>
     </div>
   );
+  const roles = teamRoles(team);
+  const core = ['hazards', 'removal', 'recovery', 'pivot', 'speed', 'setup'] as const;
+  const covered = core.filter((c) => roles[c].length > 0).length;
+  const anyMoves = team.some((m) => m.moves.length);
+  const rolesTile = anyMoves
+    ? { value: `${covered}/${core.length}`, sub: 'support jobs covered', level: (covered >= 5 ? 'good' : covered >= 3 ? 'warn' : 'bad') as 'good' | 'warn' | 'bad' }
+    : { value: '—', sub: 'choose moves to see roles', level: 'warn' as const };
   const lvl = (x: number, n: number) => (x >= n * 0.85 ? 'good' : x >= n * 0.65 ? 'warn' : 'bad') as 'good' | 'warn' | 'bad';
   return (
     <div className="report">
       {tile('Defense', `${r.defenseSafe}/${r.typeCount}`, 'types you handle', lvl(r.defenseSafe, r.typeCount))}
       {tile('Offense', `${r.offenseHit}/${r.typeCount}`, 'types you hit super effectively', lvl(r.offenseHit, r.typeCount))}
       {tile('Speed', `${r.fast}`, `fast members · avg base ${r.avgSpeed}`, team.length >= 4 && r.fast === 0 ? 'bad' : r.fast >= 2 ? 'good' : 'warn')}
+      {tile('Roles', rolesTile.value, rolesTile.sub, rolesTile.level)}
       {tile('Balance', `${r.physical}P / ${r.special}S`, `${r.mixed} mixed`, team.length >= 4 && (r.physical === 0 || r.special === 0) ? 'warn' : 'good')}
       {r.sharedWeak.length > 0 && (
         <div className="tile wide">
@@ -151,9 +190,9 @@ export function AnalysisPanel({ gen, team, real }: { gen: Generation; team: Memb
   return (
     <section className="panel analysis">
       <div className="tabs">
-        {(['defense', 'offense', 'stats'] as Tab[]).map((t) => (
+        {(['defense', 'offense', 'roles', 'stats'] as Tab[]).map((t) => (
           <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>
-            {t === 'defense' ? 'Weaknesses & resistances' : t === 'offense' ? 'Type coverage' : 'Stats'}
+            {t === 'defense' ? 'Weaknesses & resistances' : t === 'offense' ? 'Type coverage' : t === 'roles' ? 'Roles' : 'Stats'}
           </button>
         ))}
       </div>
@@ -164,6 +203,7 @@ export function AnalysisPanel({ gen, team, real }: { gen: Generation; team: Memb
           <Report gen={gen} team={team} />
           {tab === 'defense' && <Defense gen={gen} team={team} />}
           {tab === 'offense' && <Offense gen={gen} team={team} />}
+          {tab === 'roles' && <Roles team={team} />}
           {tab === 'stats' && <Stats team={team} real={real} />}
           <div className="insights">
             {notes.map((n, i) => <div key={i} className={`insight ${n.level}`}>{n.level === 'good' ? '✓' : '!'} {n.text}</div>)}

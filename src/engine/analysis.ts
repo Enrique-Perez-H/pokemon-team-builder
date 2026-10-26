@@ -2,6 +2,7 @@ import { STATS, bst, typesIn, isDamaging } from './data';
 import type { Generation, StatKey, TypeName } from './data';
 import { defensiveMultiplier, moveMultiplier, typeMultiplier } from './types';
 import type { Member } from './types';
+import { EXPECTED_ROLES, ROLE_BY_ID, teamRoles } from './roles';
 
 // ---------- Defense ----------
 
@@ -132,6 +133,12 @@ export function insights(gen: Generation, team: Member[]): Insight[] {
   }
   if (team.length >= 4 && !stats.some((s) => s.speed >= 100)) {
     out.push({ level: 'warn', text: 'No member has base Speed 100 or higher.' });
+  }
+  // Support roles only make sense to judge once most of the team has moves.
+  if (team.length >= 4 && team.filter((m) => m.moves.length).length >= team.length - 1) {
+    const roles = teamRoles(team);
+    const missing = EXPECTED_ROLES.filter((r) => roles[r].length === 0).map((r) => ROLE_BY_ID[r].label.toLowerCase());
+    if (missing.length) out.push({ level: 'warn', text: `No ${missing.join(', ')} among the chosen moves.` });
   }
   if (!out.some((i) => i.level !== 'good')) out.push({ level: 'good', text: 'No glaring weaknesses found.' });
   return out;

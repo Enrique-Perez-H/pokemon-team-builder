@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Generation } from '../engine/data';
-import { DEFAULT_WEIGHTS, optimizeTeam } from '../engine/optimize';
-import { optimizeVsFoes, pickThreats } from '../engine/search';
+import { DEFAULT_WEIGHTS } from '../engine/optimize';
+import { optimizeBalanced, optimizeVsFoes, pickThreats } from '../engine/search';
 import type { OptimizedTeam, Weights } from '../engine/optimize';
 import type { RuleInstance } from '../engine/rules';
 import { Sprite } from './common';
@@ -21,13 +21,15 @@ const LABELS: Record<keyof Weights, string> = {
   defense: 'Defense',
   offense: 'Offense coverage',
   stats: 'Raw stats',
+  roles: 'Team roles',
 };
 
 const WEIGHT_PRESETS: { label: string; w: Weights }[] = [
-  { label: 'Balanced', w: { defense: 1, offense: 1, stats: 1 } },
-  { label: 'Hard-hitting', w: { defense: 0.5, offense: 2, stats: 1 } },
-  { label: 'Defensive', w: { defense: 2, offense: 0.5, stats: 1 } },
-  { label: 'Raw power', w: { defense: 0.5, offense: 0.5, stats: 3 } },
+  { label: 'Balanced', w: { defense: 1, offense: 1, stats: 1, roles: 1 } },
+  { label: 'Hard-hitting', w: { defense: 0.5, offense: 2, stats: 1, roles: 0.5 } },
+  { label: 'Defensive', w: { defense: 2, offense: 0.5, stats: 1, roles: 1.5 } },
+  { label: 'Support-rich', w: { defense: 1, offense: 0.5, stats: 0.5, roles: 3 } },
+  { label: 'Raw power', w: { defense: 0.5, offense: 0.5, stats: 3, roles: 0 } },
 ];
 
 export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }: Props) {
@@ -57,9 +59,7 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }:
         setBenchmark(foes.map((f) => f.name));
         setResults(r.teams);
       } else {
-        // Yield so the spinner paints before the (synchronous) search runs.
-        await new Promise((r) => setTimeout(r, 30));
-        setResults(optimizeTeam({ gen, rules, locked, megas, weights }));
+        setResults(await optimizeBalanced({ gen, rules, locked, megas, weights }));
       }
     } finally {
       setBusy(false);
@@ -78,7 +78,7 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }:
       <h2>Team optimizer</h2>
       <p className="muted">
         Searches every Pokémon allowed by your rules for the team with the best defensive profile,
-        type coverage and stats, then picks abilities and attacking moves.
+        type coverage and stats, then picks abilities and movesets (attacks plus hazards, recovery, pivots and setup).
       </p>
       <div className="chip-row">
         {WEIGHT_PRESETS.map((p) => (
@@ -136,7 +136,7 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }:
               </div>
               {!benchmark && (
                 <div className="opt-parts muted">
-                  Def {r.parts.defense.toFixed(1)} · Off {r.parts.offense.toFixed(1)} · Stats {r.parts.stats.toFixed(1)}
+                  Def {r.parts.defense.toFixed(1)} · Off {r.parts.offense.toFixed(1)} · Stats {r.parts.stats.toFixed(1)} · Roles {r.parts.roles.toFixed(1)}
                 </div>
               )}
               <button className="btn primary" disabled={applying} onClick={() => apply(r)}>Use this team</button>

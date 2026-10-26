@@ -279,3 +279,14 @@ select, input[type=text], input[type=search], input:not([type]), input[type=numb
 :root[data-theme=light] .cell.mweak, :root[data-theme=light] .cell.lose { background: #f3cbbd; color: #7a2a14; }
 :root[data-theme=light] .cell.mweak2, :root[data-theme=light] .cell.lose2 { background: #ef9b94; color: #5c0f0a; }
 :root[data-theme=light] .sprite-btn, :root[data-theme=light] .enemy-card { background: var(--panel2); }
+
+.team-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.roles { display: flex; flex-direction: column; gap: 6px; }
+.role-row { display: grid; grid-template-columns: 220px 1fr; gap: 12px; align-items: center; padding: 8px 12px; background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--line); border-radius: 8px; }
+.role-row.has { border-left-color: var(--good); }
+.role-row.missing { border-left-color: var(--bad); }
+.role-name { display: flex; flex-direction: column; }
+.role-holders { display: flex; flex-wrap: wrap; gap: 8px; }
+.holder { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.holder small { font-size: 11px; }
+@media (max-width: 700px) { .role-row { grid-template-columns: 1fr; } }

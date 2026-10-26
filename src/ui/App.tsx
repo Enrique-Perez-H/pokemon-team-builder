@@ -14,6 +14,7 @@ import { RulesPanel } from './RulesPanel';
 import { TeamCard } from './TeamCard';
 import { TeamMenu } from './TeamMenu';
 import { computeStats, suggestBuild } from '../engine/sets';
+import { buildTeamSets } from '../engine/teamsets';
 import { buildFor, getGen, resolveSlots, useBuilder, useTheme } from './state';
 import type { Slot } from './state';
 
@@ -23,6 +24,7 @@ export function App() {
   const [pickSlot, setPickSlot] = useState<number | null>(null);
   const [buildTarget, setBuildTarget] = useState<number | null>(null);
   const [moveTarget, setMoveTarget] = useState<{ slot: number; index: number } | null>(null);
+  const [filling, setFilling] = useState(false);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
 
@@ -49,6 +51,34 @@ export function App() {
       }),
     }));
     setPickSlot(null);
+  };
+
+  /**
+   * Build movesets for the whole team. With `all` false only Pokémon without moves are filled; with `all` true every
+   * unlocked Pokémon is rebuilt. Existing sets still count when deciding which support jobs the team needs.
+   */
+  const autoFill = async (all: boolean) => {
+    const idx = state.slots.flatMap((s, i) => (s && gen.species.get(s.species) ? [i] : []));
+    if (!idx.length) return;
+    setFilling(true);
+    try {
+      const species = idx.map((i) => gen.species.get(state.slots[i]!.species)!);
+      const regenerate = (i: number) => (all ? !state.slots[i]!.locked : state.slots[i]!.moves.length === 0);
+      const keep = idx.map((i) => (regenerate(i) ? null : state.slots[i]!.moves));
+      const sets = await buildTeamSets(gen, species, { keep });
+      setState((st) => ({
+        ...st,
+        slots: st.slots.map((s, i) => {
+          const k = idx.indexOf(i);
+          if (!s || k < 0 || !regenerate(i)) return s;
+          const sp = species[k];
+          const mv = sets[k].flatMap((n) => { const m = gen.moves.get(n); return m ? [m] : []; });
+          return { ...s, moves: sets[k], build: suggestBuild(gen, sp, mv, s.ability) };
+        }),
+      }));
+    } finally {
+      setFilling(false);
+    }
   };
 
   const swapSlots = (a: number, b: number) =>
@@ -182,6 +212,15 @@ export function App() {
                 />
               </div>
             ))}
+          </div>
+          <div className="team-tools">
+            <button className="btn" disabled={filling || !team.length} onClick={() => autoFill(false)} title="Give Pokémon without moves a full set: attacks plus the hazards, recovery, pivoting and setup the team needs">
+              {filling ? 'Building sets…' : 'Fill empty moves'}
+            </button>
+            <button className="btn" disabled={filling || !team.length} onClick={() => autoFill(true)} title="Rebuild the moves of every unlocked Pokémon">
+              Rebuild all moves
+            </button>
+            <small className="muted">Sets are built for the whole team: one hazard setter, one remover, recovery, a pivot and setup where they suit.</small>
           </div>
           <AnalysisPanel gen={gen} team={team} real={realStats} />
         </div>

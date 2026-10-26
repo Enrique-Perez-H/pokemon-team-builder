@@ -9,9 +9,11 @@ export interface Weights {
   defense: number;
   offense: number;
   stats: number;
+  /** Support roles: hazards, removal, recovery, pivoting, speed control, setup. */
+  roles: number;
 }
 
-export const DEFAULT_WEIGHTS: Weights = { defense: 1, offense: 1, stats: 1 };
+export const DEFAULT_WEIGHTS: Weights = { defense: 1, offense: 1, stats: 1, roles: 1 };
 
 export interface OptimizeOptions {
   gen: Generation;
@@ -95,7 +97,7 @@ export function scoreFeats(F: Feat[], nTypes: number, w: Weights): { total: numb
     const spec = F.filter((f) => f.side === -1).length;
     stats -= 0.25 * Math.max(0, Math.abs(phys - spec) - 1);
   }
-  const parts = { defense: defense * w.defense, offense: offense * w.offense, stats: stats * w.stats };
+  const parts = { defense: defense * w.defense, offense: offense * w.offense, stats: stats * w.stats, roles: 0 };
   return { total: parts.defense + parts.offense + parts.stats, parts };
 }
 

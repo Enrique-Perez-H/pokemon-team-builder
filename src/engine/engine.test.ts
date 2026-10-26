@@ -495,3 +495,116 @@ describe('real-damage search', () => {
     for (const t of new Set(mains)) expect(mains.filter((m) => m === t).length).toBeLessThanOrEqual(2);
   });
 });
+
+import { ROLES, moveRoles, teamRoles } from './roles';
+import { buildTeamSets } from './teamsets';
+
+
+describe('roles', () => {
+  const mv = (n: string) => gen.moves.get(n)!;
+  it('classifies moves from their data', () => {
+    const roles = (n: string) => moveRoles(mv(n));
+    expect(roles('Stealth Rock')).toContain('hazards');
+    expect(roles('Rapid Spin')).toContain('removal');
+    expect(roles('Roost')).toContain('recovery');
+    expect(roles('Giga Drain')).not.toContain('recovery'); // attacking drain moves are not recovery
+    expect(roles('U-turn')).toContain('pivot');
+    expect(roles('Baton Pass')).not.toContain('pivot');
+    expect(roles('Swords Dance')).toContain('setup');
+    expect(roles('Trick Room')).toContain('speed');
+    expect(roles('Thunder Wave')).toEqual(expect.arrayContaining(['speed']));
+    expect(roles('Icy Wind')).toContain('speed');
+    expect(roles('Will-O-Wisp')).toContain('status');
+    expect(roles('Reflect')).toContain('screens');
+    expect(roles('Dragon Tail')).toContain('phazing');
+    expect(roles('Extreme Speed')).toContain('priority');
+    expect(roles('Fake Out')).not.toContain('priority');
+    expect(roles('Earthquake')).toEqual([]);
+    expect(ROLES.every((r) => r.cap > 0 && r.weight > 0)).toBe(true);
+  });
+  it('maps team roles to the members holding them', () => {
+    const team: Member[] = [
+      { species: gen.species.get('Corviknight')!, moves: [mv('Roost'), mv('U-turn')] },
+      { species: gen.species.get('Garchomp')!, moves: [mv('Earthquake'), mv('Stealth Rock')] },
+    ];
+    const r = teamRoles(team);
+    expect(r.recovery.map((h) => h.name)).toEqual(['Corviknight']);
+    expect(r.hazards.map((h) => h.name)).toEqual(['Garchomp']);
+    expect(r.pivot[0].moves).toEqual(['U-turn']);
+    expect(r.setup).toEqual([]);
+  });
+});
+
+describe('team sets', () => {
+  const names = ['Garchomp', 'Corviknight', 'Gengar', 'Clodsire', 'Primarina', 'Dragapult'];
+  const team = names.map((n) => gen.species.get(n)!);
+  it('covers support jobs without overloading anyone', async () => {
+    const sets = await buildTeamSets(gen, team);
+    expect(sets).toHaveLength(6);
+    const members: Member[] = sets.map((moves, i) => ({ species: team[i], moves: moves.map((m) => gen.moves.get(m)!) }));
+    for (const m of members) {
+      expect(m.moves.length).toBeGreaterThan(0);
+      expect(m.moves.length).toBeLessThanOrEqual(4);
+      expect(new Set(m.moves.map((x) => x.id)).size).toBe(m.moves.length);
+      const util = m.moves.filter((x) => x.category === 'Status').length;
+      expect(util).toBeLessThanOrEqual(2);
+      expect(m.moves.filter((x) => x.category !== 'Status').length).toBeGreaterThanOrEqual(2);
+    }
+    const roles = teamRoles(members);
+    expect(roles.hazards.length).toBe(1);
+    expect(roles.recovery.length).toBeGreaterThanOrEqual(1);
+    expect(roles.pivot.length + roles.speed.length).toBeGreaterThanOrEqual(1);
+    // every move is genuinely learnable by its owner
+    for (let i = 0; i < team.length; i++) {
+      const learnable = new Set((await learnableMoves(gen, team[i].name)).map((m) => m.id));
+      for (const m of members[i].moves) expect(learnable.has(m.id)).toBe(true);
+    }
+  });
+  it('keeps existing sets and counts their roles', async () => {
+    const keep = [['Stealth Rock', 'Earthquake'], null, null, null, null, null];
+    const sets = await buildTeamSets(gen, team, { keep });
+    expect(sets[0]).toEqual(['Stealth Rock', 'Earthquake']);
+    const members: Member[] = sets.map((moves, i) => ({ species: team[i], moves: moves.map((m) => gen.moves.get(m)!) }));
+    expect(teamRoles(members).hazards.map((h) => h.name)).toEqual(['Garchomp']); // nobody doubles up on hazards
+  });
+  it('still fills four attacks for Pokémon that cannot do support jobs', async () => {
+    const sets = await buildTeamSets(gen, [gen.species.get('Hawlucha')!]);
+    expect(sets[0].length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+import { optimizeBalanced } from './search';
+import { roleBonus, roleCapabilities } from './teamsets';
+import { DEFAULT_WEIGHTS } from './optimize';
+
+describe('role-aware optimizer', () => {
+  const none = Array(6).fill(null);
+  it('covers more support jobs when roles matter, without breaking rules', async () => {
+    // A narrow pool (Fighting types only) is where raw strength and support jobs compete.
+    const fighting = newRule('allowed_types');
+    fighting.params.types = ['Fighting'];
+    const rules = [newRule('species_clause'), newRule('no_legendaries'), newRule('no_paradox'), fighting];
+    const withRoles = await optimizeBalanced({ gen, rules, locked: none, megas: false, weights: { ...DEFAULT_WEIGHTS, roles: 2 } });
+    const without = await optimizeBalanced({ gen, rules, locked: none, megas: false, weights: { ...DEFAULT_WEIGHTS, roles: 0 } });
+    expect(withRoles.length).toBeGreaterThan(0);
+    expect(validateTeam(rules, withRoles[0].slots)).toEqual([]);
+    const bonus = async (team: Specie[]) => { const caps = await roleCapabilities(gen, team); return roleBonus(team.map((s) => caps.get(s.name)!)); };
+    expect(await bonus(withRoles[0].slots)).toBeGreaterThan(await bonus(without[0].slots));
+    expect(withRoles[0].parts.roles).toBeGreaterThan(0);
+    expect(without[0].parts.roles).toBe(0);
+  });
+  it('gives a hazard setter and recovery by default', async () => {
+    const rules = [newRule('species_clause'), newRule('no_legendaries'), newRule('no_paradox')];
+    const res = await optimizeBalanced({ gen, rules, locked: none, megas: false });
+    const caps = await roleCapabilities(gen, res[0].slots);
+    const all = res[0].slots.flatMap((s) => caps.get(s.name)!);
+    expect(all).toContain('hazards');
+    expect(all).toContain('recovery');
+  });
+  it('caps a single Pokémon at two jobs when scoring', () => {
+    // One Pokémon able to do everything still only counts for two roles.
+    const jack = ['hazards', 'removal', 'recovery', 'pivot', 'speed', 'setup'] as const;
+    expect(roleBonus([[...jack]])).toBeLessThan(roleBonus([[...jack], [...jack], [...jack]]));
+    expect(roleBonus([[...jack]])).toBeLessThanOrEqual(1.0 + 0.8);
+  });
+});

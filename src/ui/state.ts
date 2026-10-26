@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getGen } from '../engine/data';
 import type { Generation, TypeName } from '../engine/data';
-import { autoMoves } from '../engine/moves';
+import { buildTeamSets } from '../engine/teamsets';
 import type { OptimizedTeam } from '../engine/optimize';
 import { suggestBuild } from '../engine/sets';
 import type { Slot } from '../engine/team';
@@ -81,8 +81,8 @@ export { getGen };
 
 
 /**
- * Turn an optimizer result into slots: kept Pokémon stay as they are, new ones get the suggested
- * ability and automatically chosen attacking moves (aimed at `foes` when given).
+ * Turn an optimizer result into slots: kept Pokémon stay as they are, new ones get the suggested ability and a
+ * moveset built for the whole team (attacks plus the support jobs the team still needs), aimed at `foes` when given.
  */
 export async function slotsFromResult(
   gen: Generation,
@@ -90,16 +90,16 @@ export async function slotsFromResult(
   kept: (Slot | null)[],
   foes?: TypeName[][],
 ): Promise<Slot[]> {
-  return Promise.all(
-    team.slots.map(async (sp, i): Promise<Slot> => {
-      const old = kept[i];
-      if (old && old.species === sp.name) return old;
-      const moves = await autoMoves(gen, sp, foes);
-      const ability = team.abilities[i];
-      const mv = moves.flatMap((n) => { const m = gen.moves.get(n); return m ? [m] : []; });
-      return { species: sp.name, ability, moves, build: suggestBuild(gen, sp, mv, ability) };
-    }),
-  );
+  const keep = team.slots.map((sp, i) => (kept[i] && kept[i]!.species === sp.name ? kept[i]!.moves : null));
+  const sets = await buildTeamSets(gen, team.slots, { foes, keep });
+  return team.slots.map((sp, i): Slot => {
+    const old = kept[i];
+    if (old && old.species === sp.name) return old;
+    const moves = sets[i];
+    const ability = team.abilities[i];
+    const mv = moves.flatMap((n) => { const m = gen.moves.get(n); return m ? [m] : []; });
+    return { species: sp.name, ability, moves, build: suggestBuild(gen, sp, mv, ability) };
+  });
 }
 
 /** The build to use for a slot: its saved one, or a suggested default for its species and moves. */

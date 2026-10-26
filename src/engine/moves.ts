@@ -21,24 +21,23 @@ function power(m: Move, s: Specie): number {
 }
 
 /**
- * Pick up to four reliable attacking moves: best STAB move for each own type first, then the
- * moves that open the most new super-effective coverage. Status moves are left to the player.
- * When `foes` (the defending types of each opposing Pokémon) is given, coverage is measured against
- * those targets instead of every single type.
+ * Choose up to `count` reliable attacking moves from `all`: the best STAB move for each own type first, then the
+ * moves that open the most new super-effective coverage. When `foes` (the defending types of each opposing Pokémon)
+ * is given, coverage is measured against those targets instead of every single type.
  */
-export async function autoMoves(gen: Generation, species: Specie, foes?: TypeName[][]): Promise<string[]> {
-  const all = await learnableMoves(gen, species.name);
+export function pickAttacks(gen: Generation, species: Specie, all: Move[], count: number, foes?: TypeName[][]): Move[] {
   const pool = all.filter((m) => m.category !== 'Status' && m.basePower >= 40 && !risky(m));
   const targets: TypeName[][] = foes?.length ? foes : typesIn(gen).map((t) => [t]);
   const chosen: Move[] = [];
 
   for (const t of species.types) {
+    if (chosen.length >= count) break;
     const best = pool.filter((m) => m.type === t).sort((a, b) => power(b, species) - power(a, species))[0];
     if (best && power(best, species) >= 40) chosen.push(best);
   }
 
   const hits = (m: Move) => new Set<number>(targets.flatMap((t, i) => (moveMultiplier(gen, m, t) > 1 ? [i] : [])));
-  while (chosen.length < 4) {
+  while (chosen.length < count) {
     const covered = new Set<number>();
     chosen.forEach((m) => hits(m).forEach((t) => covered.add(t)));
     let best: Move | undefined;
@@ -52,7 +51,13 @@ export async function autoMoves(gen: Generation, species: Specie, foes?: TypeNam
     if (!best) break;
     chosen.push(best);
   }
-  return chosen.map((m) => m.name);
+  return chosen;
+}
+
+/** Four attacking moves for one Pokémon (see `pickAttacks`). Status moves are left to `buildTeamSets`. */
+export async function autoMoves(gen: Generation, species: Specie, foes?: TypeName[][]): Promise<string[]> {
+  const all = await learnableMoves(gen, species.name);
+  return pickAttacks(gen, species, all, 4, foes).map((m) => m.name);
 }
 
 /** Attack types a Pokémon is likely to use: the types of its best attacking moves (STAB if it has none). */

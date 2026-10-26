@@ -45,6 +45,11 @@ npm run build
   damage calculator (best move on each side, speed and knock-out thresholds). Candidates are shortlisted cheaply,
   calculated once against each foe, then the beam search looks the numbers up, so it still takes about a second.
   Individual counters and the matchup table use the same real numbers.
+- **Team roles and real movesets**: moves are classified by what they do (hazards, hazard removal, recovery, pivot,
+  setup, speed control, screens, status, phazing, priority). The set builder hands those jobs out across the whole team
+  (one hazard setter, one remover, recovery for the bulky, a pivot, setup for the sweepers) and fills the rest with
+  attacks, so no Pokémon carries more than two support moves. "Fill empty moves" / "Rebuild all moves" use it, the
+  optimizer scores teams on which jobs they can cover, and a Roles tab shows who does what and what is missing.
 - The picker shows **suggestions** that patch the team's weaknesses and coverage gaps.
 
 ## Deploy to GitHub Pages / install as an app
@@ -71,5 +76,4 @@ for whole-team limits). The rules panel, picker filtering and validation pick it
 ## Roadmap
 
 1. Per-game availability (regional dexes, in-game moves) and game-specific rules.
-2. Support moves and team roles (hazards, recovery, pivots, speed control) in generated sets.
-3. Doubles, Tera types, held-item suggestions and set sharing.
+2. Doubles, Tera types, held-item suggestions and set sharing.
