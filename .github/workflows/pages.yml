@@ -1,10 +1,12 @@
-# Typechecks, tests, builds and publishes the app to GitHub Pages on every push to main.
+# Typechecks, runs the unit and browser tests, builds, and publishes the app to GitHub Pages on every push to main.
+# Pull requests run the same checks without deploying.
 # One-time setup: repo Settings → Pages → Build and deployment → Source: "GitHub Actions".
-name: Deploy to GitHub Pages
+name: Test and deploy to GitHub Pages
 
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -13,7 +15,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -27,14 +29,30 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npm test
+      - name: Unit tests
+        run: npm test
       - run: npm run build
+      - name: Install the browser for the end-to-end tests
+        run: npx playwright install --with-deps chromium
+      - name: End-to-end tests (desktop and phone)
+        run: npx playwright test
+      - name: Keep the Playwright report when a test fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            playwright-report
+            test-results
+          retention-days: 7
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
         with:
           path: dist
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

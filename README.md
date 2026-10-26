@@ -6,9 +6,12 @@ Visual team builder (React + TypeScript + Vite). All Pokémon data comes from th
 ```
 npm install
 npm run dev      # start the app
-npm test         # engine tests
+npm test         # unit tests (engine)
+npm run e2e      # build, then browser tests (desktop and phone) with Playwright
 npm run build
 ```
+
+Browser tests need a Chromium: `npm run e2e:install` once (CI does this itself).
 
 ## What it does now
 
@@ -55,11 +58,19 @@ npm run build
   learns there, regional forms and Megas only appear where the game has them, and the game's generation drives the
   type chart and mechanics. A managed rule ("Only Pokémon in …") can be switched off for a National Dex style pool.
   PokeAPI has no Legends: Z-A movesets yet, so that game uses Gen 9 moves.
+- **Tera types** (Gen 9): a Tera type per Pokémon (build editor, card badge, Showdown format), team-aware
+  suggestions that patch shared weaknesses, a Terastallized view of the defence matrix and Tera in the calculator.
+- **Doubles**: a Singles/Doubles switch. Doubles adds roles (Fake Out, redirection, partner support, Protect, spread
+  attacks), builds sets with Protect and spread moves, scores teams on doubles roles, applies the spread-move damage
+  reduction in the calculator and recommends which four to bring and who leads against an enemy team.
+- **Phones**: a compact header, a bottom tab bar, bottom-sheet dialogs, large touch targets and 16px form text, with the
+  optimizer right under your team.
 - The picker shows **suggestions** that patch the team's weaknesses and coverage gaps.
 
 ## Deploy to GitHub Pages / install as an app
 
-`.github/workflows/pages.yml` typechecks, tests, builds and publishes `dist/` on every push to `main`.
+`.github/workflows/pages.yml` typechecks, runs the unit and browser tests, builds and publishes `dist/` on every push to
+`main` (pull requests run the same checks without deploying).
 One-time setup: repo **Settings → Pages → Build and deployment → Source: GitHub Actions**. (Serving the
 branch directly does not work: the app must be built first.) It is then live at
 `https://<user>.github.io/pokemon-team-builder/`. Builds use relative asset paths, so any path works.
@@ -92,4 +103,5 @@ for whole-team limits). The rules panel, picker filtering and validation pick it
 ## Roadmap
 
 1. Game-specific rules (Let's Go has no abilities or items, Legends: Arceus mechanics, in-game level caps).
-2. Doubles, Tera types, held-item suggestions and set sharing.
+2. Smarter enemy input (gym leader and Elite Four teams per game, pasting a Showdown team) and held-item suggestions.
+3. Tera in the optimizer and the enemy-tab damage tables.
