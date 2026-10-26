@@ -24,18 +24,15 @@ npm run build
   picked, suggests abilities (e.g. Levitate, Water Absorb) and auto-selects four attacking moves per Pokémon.
 - The picker shows **suggestions** that patch the team's weaknesses and coverage gaps.
 
-## Deploy to GitLab Pages / install as an app
+## Deploy to GitHub Pages / install as an app
 
-`.gitlab-ci.yml` runs typecheck, tests and build on every pipeline and publishes `dist/` to GitLab Pages from the
-default branch (`https://<namespace>.gitlab.io/<project>/`). Builds use relative asset paths, so any project path works.
+`.github/workflows/pages.yml` typechecks, tests, builds and publishes `dist/` on every push to `main`.
+One-time setup: repo **Settings → Pages → Build and deployment → Source: GitHub Actions**. (Serving the
+branch directly does not work: the app must be built first.) It is then live at
+`https://<user>.github.io/pokemon-team-builder/`. Builds use relative asset paths, so any path works.
 
 The site is a PWA (manifest, icons, service worker): open it in Chrome/Edge/Safari and use *Install app* /
 *Add to Home Screen*. After the first visit it works offline (sprites load from the network and are cached as seen).
-
-```
-git remote add gitlab git@gitlab.com:<namespace>/<project>.git
-git push gitlab <branch>:main
-```
 
 ## Layout
 
