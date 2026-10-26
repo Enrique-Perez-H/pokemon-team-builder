@@ -608,3 +608,104 @@ describe('role-aware optimizer', () => {
     expect(roleBonus([[...jack]])).toBeLessThanOrEqual(1.0 + 0.8);
   });
 });
+
+import { readFileSync } from 'node:fs';
+import { GAME_BY_ID, GAME_LIST, availableInGame, gameData, parseGameData, registerGameData } from './games';
+import type { RawGameData } from './games';
+import { gameIdOf, genKey } from './data';
+
+describe('per-game availability', () => {
+  const load = (id: string) => registerGameData(id, JSON.parse(readFileSync(`public/data/games/${id}.json`, 'utf8')) as RawGameData);
+  for (const g of GAME_LIST) load(g.id);
+  const inGame = (game: string, name: string) => {
+    const s = getGen(ALL_GENS).species.get(name)!;
+    return availableInGame(GAME_BY_ID[game], gameData(game)!, s);
+  };
+
+  it('has data for every game in the catalog', () => {
+    for (const g of GAME_LIST) {
+      const d = gameData(g.id)!;
+      expect(d.dex.size, g.id).toBeGreaterThan(100);
+    }
+    expect(parseGameData({ dex: [1], moves: [], learn: null }).learn).toBeNull();
+  });
+  it('knows which Pokémon are in which game', () => {
+    expect(inGame('red-blue', 'Pikachu')).toBe(true);
+    expect(inGame('red-blue', 'Mewtwo')).toBe(true);
+    expect(inGame('red-blue', 'Chikorita')).toBe(false);
+    expect(inGame('gold-silver', 'Chikorita')).toBe(true);
+    expect(inGame('emerald', 'Rayquaza')).toBe(true);
+    expect(inGame('emerald', 'Garchomp')).toBe(false);
+    expect(inGame('scarlet-violet', 'Garchomp')).toBe(true);
+    expect(inGame('scarlet-violet', 'Charizard')).toBe(true);
+    expect(inGame('sword-shield', 'Charizard')).toBe(true);
+    expect(inGame('diamond-pearl', 'Greninja')).toBe(false);
+    expect(gameData('lets-go')!.dex.size).toBeLessThan(160);
+  });
+  it('limits regional forms and Megas to games that have them', () => {
+    expect(inGame('sword-shield', 'Zigzagoon-Galar')).toBe(true);
+    expect(inGame('sword-shield', 'Vulpix-Alola')).toBe(false);
+    expect(inGame('ultra-sun-ultra-moon', 'Vulpix-Alola')).toBe(true);
+    expect(inGame('scarlet-violet', 'Tauros-Paldea-Combat')).toBe(true);
+    expect(inGame('emerald', 'Zigzagoon-Galar')).toBe(false);
+    expect(inGame('x-y', 'Charizard-Mega-X')).toBe(true);
+    expect(inGame('scarlet-violet', 'Charizard-Mega-X')).toBe(false);
+    expect(inGame('omega-ruby-alpha-sapphire', 'Kyogre-Primal')).toBe(true);
+  });
+  it('gives each game its own generation object and cache key', () => {
+    const bdsp = getGen(8, 'brilliant-diamond-shining-pearl');
+    const swsh = getGen(8, 'sword-shield');
+    expect(bdsp).not.toBe(swsh);
+    expect(bdsp).not.toBe(getGen(8));
+    expect(gameIdOf(bdsp)).toBe('brilliant-diamond-shining-pearl');
+    expect(gameIdOf(getGen(8))).toBeUndefined();
+    expect(new Set([genKey(bdsp), genKey(swsh), genKey(getGen(8)), genKey(getGen(9)), genKey(getGen(ALL_GENS))]).size).toBe(5);
+    // Past Pokémon exist in a game's Generation so older-gen games work (Pidgeot is not in plain Gen 8 data)
+    expect(bdsp.species.get('Pidgeot')).toBeTruthy();
+  });
+  it('restricts moves to what a Pokémon learns in that game', async () => {
+    const rb = getGen(1, 'red-blue');
+    const moves = (await learnableMoves(rb, 'Pikachu')).map((m) => m.name);
+    expect(moves).toContain('Thunderbolt');
+    expect(moves).not.toContain('Volt Tackle');
+    const plain = (await learnableMoves(getGen(1), 'Pikachu')).map((m) => m.name);
+    expect(moves.length).toBeLessThanOrEqual(plain.length);
+    const sv = getGen(9, 'scarlet-violet');
+    const garchomp = (await learnableMoves(sv, 'Garchomp')).map((m) => m.name);
+    expect(garchomp).toContain('Earthquake');
+    const za = getGen(9, 'legends-za');
+    expect((await learnableMoves(za, 'Garchomp')).length).toBeGreaterThan(20); // no Z-A move data: falls back to Gen 9
+    // formes without their own entry fall back to the base species
+    expect((await learnableMoves(sv, 'Tauros-Paldea-Combat')).length).toBeGreaterThan(10);
+  });
+  it('the game rule filters pickers and the optimizer', () => {
+    const rule = newRule('game_dex');
+    rule.params.game = 'red-blue';
+    const g = getGen(1, 'red-blue');
+    expect(speciesViolations([rule], g.species.get('Chikorita') ?? getGen(ALL_GENS).species.get('Chikorita')!)).toHaveLength(1);
+    expect(speciesViolations([rule], g.species.get('Pikachu')!)).toHaveLength(0);
+    const pool = speciesPool(g, false).filter((s) => speciesViolations([rule], s).length === 0);
+    expect(pool.length).toBe(151);
+    const res = optimizeTeam({ gen: g, rules: [newRule('species_clause'), rule], locked: Array(6).fill(null), megas: false });
+    expect(res[0].slots.every((s) => s.num <= 151)).toBe(true);
+    // a disabled rule allows everything again
+    expect(speciesViolations([{ ...rule, enabled: false }], getGen(ALL_GENS).species.get('Chikorita')!)).toHaveLength(0);
+  });
+  it('does nothing until the game data has loaded', () => {
+    const rule = newRule('game_dex');
+    rule.params.game = 'not-a-game';
+    expect(speciesViolations([rule], getGen(ALL_GENS).species.get('Chikorita')!)).toHaveLength(0);
+  });
+});
+
+describe('role moves follow the generation', () => {
+  it('does not treat old-generation Teleport as a pivot', async () => {
+    const g1 = getGen(1);
+    const starmie = g1.species.get('Starmie')!;
+    const sets = await buildTeamSets(g1, [starmie]);
+    expect(sets[0]).not.toContain('Teleport');
+    const g9 = getGen(9);
+    expect(moveRoles(g9.moves.get('Teleport')!)).toContain('pivot');
+    expect(moveRoles(g1.moves.get('Teleport')!)).not.toContain('pivot');
+  });
+});

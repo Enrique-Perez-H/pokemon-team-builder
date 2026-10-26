@@ -50,6 +50,11 @@ npm run build
   (one hazard setter, one remover, recovery for the bulky, a pivot, setup for the sweepers) and fills the rest with
   attacks, so no Pokémon carries more than two support moves. "Fill empty moves" / "Rebuild all moves" use it, the
   optimizer scores teams on which jobs they can cover, and a Roles tab shows who does what and what is missing.
+- **Per-game availability**: pick a specific game (Red/Blue through Scarlet/Violet and Legends: Z-A, expansions merged
+  into their base game) and the pool becomes that game's regional Pokédex, move lists become exactly what each Pokémon
+  learns there, regional forms and Megas only appear where the game has them, and the game's generation drives the
+  type chart and mechanics. A managed rule ("Only Pokémon in …") can be switched off for a National Dex style pool.
+  PokeAPI has no Legends: Z-A movesets yet, so that game uses Gen 9 moves.
 - The picker shows **suggestions** that patch the team's weaknesses and coverage gaps.
 
 ## Deploy to GitHub Pages / install as an app
@@ -62,10 +67,21 @@ branch directly does not work: the app must be built first.) It is then live at
 The site is a PWA (manifest, icons, service worker): open it in Chrome/Edge/Safari and use *Install app* /
 *Add to Home Screen*. After the first visit it works offline (sprites load from the network and are cached as seen).
 
+## Game data
+
+`public/data/games/<game>.json` (one small file per game, fetched only when the game is selected and cached by the
+service worker) is generated from [PokeAPI's CSV data](https://github.com/PokeAPI/pokeapi/tree/master/data/v2/csv):
+
+```
+node scripts/build-game-data.mjs <folder with the CSVs> public/data/games
+```
+
+The header of `scripts/build-game-data.mjs` lists the files to download. Re-run it when PokeAPI adds games or moves.
+
 ## Layout
 
 - `src/engine/` – pure TypeScript, no UI: `data` (dex access, learnsets), `types` (damage maths), `analysis`,
-  `rules`, `suggest`, `optimize`, `moves`, `counter`. The future "best team for a game" and "counter this enemy team" features build on this.
+  `rules`, `suggest`, `optimize`, `moves`, `counter`, `roles`, `teamsets`, `games`, `realdamage`, `search`. The future "best team for a game" and "counter this enemy team" features build on this.
 - `src/ui/` – React components.
 
 ## Adding a rule
@@ -75,5 +91,5 @@ for whole-team limits). The rules panel, picker filtering and validation pick it
 
 ## Roadmap
 
-1. Per-game availability (regional dexes, in-game moves) and game-specific rules.
+1. Game-specific rules (Let's Go has no abilities or items, Legends: Arceus mechanics, in-game level caps).
 2. Doubles, Tera types, held-item suggestions and set sharing.

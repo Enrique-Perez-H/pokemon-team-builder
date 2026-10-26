@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { GAMES } from '../engine/data';
+import { GAME_BY_ID } from '../engine/games';
 import type { Generation } from '../engine/data';
 import { exportTeam, importTeam } from '../engine/showdown';
 import { Modal, Sprite } from './common';
@@ -12,7 +13,8 @@ interface Props {
   setState: (fn: (s: BuilderState) => BuilderState) => void;
 }
 
-const genLabel = (g: number) => (g === 0 ? 'Every generation' : GAMES.find((x) => x.gen === g)?.label ?? `Gen ${g}`);
+const genLabel = (g: number, game?: string) =>
+  game && GAME_BY_ID[game] ? GAME_BY_ID[game].label : g === 0 ? 'Every generation' : GAMES.find((x) => x.gen === g)?.label ?? `Gen ${g}`;
 
 /** Header actions: saved teams, Showdown import/export and a share link. */
 export function TeamMenu({ gen, state, setState }: Props) {
@@ -63,7 +65,7 @@ export function TeamMenu({ gen, state, setState }: Props) {
             <div key={t.id} className="saved-team">
               <div className="saved-info">
                 <strong>{t.name}</strong>
-                <small className="muted">{genLabel(t.state.gen)} · {new Date(t.savedAt).toLocaleDateString()}</small>
+                <small className="muted">{genLabel(t.state.gen, t.state.game)} · {new Date(t.savedAt).toLocaleDateString()}</small>
                 <div className="saved-mons">{t.state.slots.map((s, i) => s && <Sprite key={i} name={s.species} size={32} />)}</div>
               </div>
               <button className="btn" onClick={() => { setState(() => ({ ...t.state, name: t.name })); setOpen(null); }}>Load</button>

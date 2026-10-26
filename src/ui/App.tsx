@@ -1,5 +1,6 @@
-import { useMemo, useState } from 'react';
-import { ALL_GENS, GAMES } from '../engine/data';
+import { useEffect, useMemo, useState } from 'react';
+import { ALL_GENS } from '../engine/data';
+import { GAME_BY_ID, GAME_LIST, gameData, loadGameData } from '../engine/games';
 import { validateTeam } from '../engine/rules';
 import { suggestPicks } from '../engine/suggest';
 import type { Member } from '../engine/types';
@@ -15,7 +16,7 @@ import { TeamCard } from './TeamCard';
 import { TeamMenu } from './TeamMenu';
 import { computeStats, suggestBuild } from '../engine/sets';
 import { buildTeamSets } from '../engine/teamsets';
-import { buildFor, getGen, resolveSlots, useBuilder, useTheme } from './state';
+import { buildFor, gameRule, getGen, resolveSlots, useBuilder, useTheme } from './state';
 import type { Slot } from './state';
 
 export function App() {
@@ -29,12 +30,27 @@ export function App() {
   const [dragOver, setDragOver] = useState<number | null>(null);
 
   const [theme, toggleTheme] = useTheme();
-  const gen = getGen(state.gen);
+  // Game data (Pokédex and movesets) is fetched when a game is first selected; bumping `dataVersion` re-runs checks.
+  const [dataVersion, setDataVersion] = useState(0);
+  const [loadingGame, setLoadingGame] = useState(false);
+  const gen = getGen(state.gen, state.game);
+  useEffect(() => {
+    const id = state.game;
+    if (!id || gameData(id)) return;
+    let live = true;
+    setLoadingGame(true);
+    loadGameData(id, import.meta.env.BASE_URL)
+      .then(() => live && setDataVersion((v) => v + 1))
+      .catch(() => undefined)
+      .finally(() => live && setLoadingGame(false));
+    return () => { live = false; };
+  }, [state.game]);
+
   const members = useMemo(() => resolveSlots(gen, state.slots), [gen, state.slots]);
   const speciesSlots = members.map((m) => m?.species ?? null);
   const team = members.filter((m): m is Member => !!m);
   const realStats = members.flatMap((m, i) => (m && state.slots[i] ? [computeStats(gen, m.species, buildFor(gen, state.slots[i]!, m.species, m.moves))] : []));
-  const violations = useMemo(() => validateTeam(state.rules, speciesSlots), [state.rules, members]); // eslint-disable-line react-hooks/exhaustive-deps
+  const violations = useMemo(() => validateTeam(state.rules, speciesSlots), [state.rules, members, dataVersion]); // eslint-disable-line react-hooks/exhaustive-deps
   const violatedRules = new Set(violations.map((v) => v.ruleId));
 
   const patchSlot = (i: number, fn: (s: Slot) => Slot | null) =>
@@ -92,14 +108,23 @@ export function App() {
   const setLocks = (locked: boolean) =>
     setState((st) => ({ ...st, slots: st.slots.map((s) => (s ? { ...s, locked } : s)) }));
 
-  const setGen = (n: number) =>
+  /** Choose "every generation", a whole generation, or a specific game (value format: all | gen:N | game:id). */
+  const selectGame = (value: string) => {
+    const game = value.startsWith('game:') ? value.slice(5) : undefined;
+    const n = game ? GAME_BY_ID[game].gen : value === 'all' ? ALL_GENS : Number(value.slice(4));
+    const next = getGen(n, game);
     setState((st) => ({
       ...st,
       gen: n,
-      // Moves and abilities are generation-specific; keep the species the new generation still has.
-      slots: st.slots.map((s) => (s && getGen(n).species.get(s.species) ? { species: s.species, moves: [] } : null)),
-      enemy: st.enemy.filter((e) => getGen(n).species.get(e)),
+      game,
+      megas: game ? GAME_BY_ID[game].megas && st.megas : st.megas,
+      // The game rule is managed here: swapped for the new game, or removed when leaving games.
+      rules: [...(game ? [gameRule(game)] : []), ...st.rules.filter((r) => r.type !== 'game_dex')],
+      // Moves and abilities are game-specific; keep the Pokémon (violations of the new game's Pokédex show on their cards).
+      slots: st.slots.map((s) => (s && next.species.get(s.species) ? { species: s.species, moves: [], locked: s.locked } : null)),
+      enemy: st.enemy.filter((e) => next.species.get(e)),
     }));
+  };
 
   // Add a Pokémon to the first empty slot (used by the enemy tab's counter suggestions).
   const addToTeam = (species: string) => {
@@ -148,20 +173,31 @@ export function App() {
           <div className="controls">
             <label>
               Game
-              <select value={state.gen} onChange={(e) => setGen(Number(e.target.value))}>
-                {GAMES.map((g) => <option key={g.gen} value={g.gen}>{g.gen === ALL_GENS ? g.label : `Gen ${g.gen} — ${g.label}`}</option>)}
+              <select value={state.game ? `game:${state.game}` : state.gen === ALL_GENS ? 'all' : `gen:${state.gen}`} onChange={(e) => selectGame(e.target.value)}>
+                <option value="all">Every generation (all Pokémon and moves, modern type chart)</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
+                  <optgroup key={n} label={`Generation ${n}`}>
+                    <option value={`gen:${n}`}>Any Pokémon up to generation {n}</option>
+                    {GAME_LIST.filter((g) => g.gen === n).map((g) => <option key={g.id} value={`game:${g.id}`}>{g.label}</option>)}
+                  </optgroup>
+                ))}
               </select>
             </label>
             <label className="check">
-              <input type="checkbox" checked={state.megas} onChange={(e) => setState((st) => ({ ...st, megas: e.target.checked }))} />
+              <input
+                type="checkbox" checked={state.megas} disabled={!!state.game && !GAME_BY_ID[state.game].megas}
+                onChange={(e) => setState((st) => ({ ...st, megas: e.target.checked }))}
+              />
               Allow Mega forms
             </label>
+            {loadingGame && <small className="muted" role="status">Loading game data…</small>}
           </div>
         </div>
       </header>
 
       {tab === 'enemy' && (
         <EnemyTab
+          key={dataVersion}
           gen={gen}
           megas={state.megas}
           rules={state.rules}
@@ -233,6 +269,7 @@ export function App() {
 
       {pickSlot !== null && (
         <PokemonPicker
+          key={dataVersion}
           gen={gen}
           megas={state.megas}
           rules={state.rules}

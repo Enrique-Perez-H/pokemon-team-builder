@@ -1,4 +1,5 @@
 import { bst, gens, isLegendary } from './data';
+import { GAME_BY_ID, availableInGame, gameData } from './games';
 import type { Specie, TypeName } from './data';
 
 /**
@@ -173,6 +174,20 @@ export const RULE_DEFS: RuleDef[] = [
     defaults: { min: 0, max: 600 },
     speciesCheck: (s, p) =>
       bst(s) < p.min ? `BST ${bst(s)} is below ${p.min}` : bst(s) > p.max ? `BST ${bst(s)} is above ${p.max}` : null,
+  },
+  {
+    type: 'game_dex',
+    label: 'Only Pokémon in the selected game',
+    description: "Only Pokémon in the game's regional Pokédex (expansions included). Turn it off to allow any Pokémon up to that generation, as with a National Dex or Pokémon HOME.",
+    params: [],
+    defaults: { game: '' },
+    speciesCheck: (s, p) => {
+      const info = GAME_BY_ID[p.game as string];
+      const data = gameData(p.game as string);
+      // Until the game's data has loaded there is nothing to check against.
+      if (!info || !data) return null;
+      return availableInGame(info, data, s) ? null : `Not in ${info.label}`;
+    },
   },
   {
     type: 'no_restricted',

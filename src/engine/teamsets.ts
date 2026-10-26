@@ -106,7 +106,8 @@ export async function buildTeamSets(gen: Generation, team: Specie[], opts: TeamS
         const prefs = PREFERENCE[role] ?? [];
         prefs.forEach((id, rank) => {
           const move = lookups[i].get(id);
-          if (!move || taken.has(move.id) || utility[i].some((u) => u.id === move.id)) return;
+          // Judge the move by this generation's data: Teleport only pivots from Gen 8, for example.
+          if (!move || !moveRoles(move).includes(role) || taken.has(move.id) || utility[i].some((u) => u.id === move.id)) return;
           const f = fit(role, profiles[i], move);
           if (f < 0) return;
           // Earlier preferences win unless a much better-suited member only has a later one.
@@ -141,7 +142,7 @@ export async function roleCapabilities(gen: Generation, species: Specie[]): Prom
     const roles = ASSIGNABLE.filter((role) =>
       (PREFERENCE[role] ?? []).some((id) => {
         const m = moves.get(id);
-        return !!m && fit(role, p, m) >= 0;
+        return !!m && moveRoles(m).includes(role) && fit(role, p, m) >= 0;
       }),
     );
     out.set(s.name, roles);

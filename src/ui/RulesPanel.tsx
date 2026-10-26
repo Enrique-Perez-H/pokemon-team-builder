@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { PRESETS, QUICK_RULES, RULE_DEFS, hasQuick, newRule, ruleDef, toggleQuick } from '../engine/rules';
 import type { ParamDef, RuleInstance } from '../engine/rules';
 import { speciesPool, typesIn } from '../engine/data';
+import { GAME_BY_ID } from '../engine/games';
 import type { Generation, TypeName } from '../engine/data';
 import { TypeFilter } from './common';
 
@@ -84,7 +85,7 @@ export function RulesPanel({ gen, rules, violated, onChange }: Props) {
         <h2>Rules</h2>
         <select
           className="preset-select" value=""
-          onChange={(e) => { const p = PRESETS.find((x) => x.id === e.target.value); if (p) onChange(p.build()); }}
+          onChange={(e) => { const p = PRESETS.find((x) => x.id === e.target.value); if (p) onChange([...rules.filter((r) => r.type === 'game_dex'), ...p.build()]); }}
           title="Replace all rules with a preset"
         >
           <option value="">Presets…</option>
@@ -108,7 +109,7 @@ export function RulesPanel({ gen, rules, violated, onChange }: Props) {
             <div className="rule-head">
               <label className="check">
                 <input type="checkbox" checked={r.enabled} onChange={(e) => update(r.id, { enabled: e.target.checked })} />
-                <strong>{def.label}</strong>
+                <strong>{r.type === 'game_dex' && GAME_BY_ID[r.params.game as string] ? `Only Pokémon in ${GAME_BY_ID[r.params.game as string].label}` : def.label}</strong>
               </label>
               <button className="icon-btn tiny" onClick={() => onChange(rules.filter((x) => x.id !== r.id))} aria-label="Delete rule">✕</button>
             </div>
@@ -121,7 +122,7 @@ export function RulesPanel({ gen, rules, violated, onChange }: Props) {
       })}
       <select className="add-rule" value="" onChange={(e) => e.target.value && onChange([...rules, newRule(e.target.value)])}>
         <option value="">+ Add rule…</option>
-        {RULE_DEFS.map((d) => <option key={d.type} value={d.type}>{d.label}</option>)}
+        {RULE_DEFS.filter((d) => d.type !== 'game_dex').map((d) => <option key={d.type} value={d.type}>{d.label}</option>)}
       </select>
     </section>
   );
