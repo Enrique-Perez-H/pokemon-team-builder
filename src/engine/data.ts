@@ -6,6 +6,9 @@ export type { Generation, Move, Specie, TypeName };
 
 export const gens = new Generations(Dex);
 
+/** Pseudo generation number for the "every generation" option. */
+export const ALL_GENS = 0;
+
 export const ALL_TYPES: TypeName[] = [
   'Normal', 'Fire', 'Water', 'Electric', 'Grass', 'Ice', 'Fighting', 'Poison', 'Ground',
   'Flying', 'Psychic', 'Bug', 'Rock', 'Ghost', 'Dragon', 'Dark', 'Steel', 'Fairy',
@@ -19,6 +22,7 @@ export const STAT_LABEL: Record<StatKey, string> = {
 
 /** Games grouped by the generation whose mechanics they use. Regional dex limits come later. */
 export const GAMES: { gen: number; label: string }[] = [
+  { gen: ALL_GENS, label: 'Every generation (all Pokémon and moves, modern type chart)' },
   { gen: 1, label: 'Red / Blue / Yellow' },
   { gen: 2, label: 'Gold / Silver / Crystal' },
   { gen: 3, label: 'Ruby / Sapphire / Emerald / FRLG' },
@@ -30,7 +34,19 @@ export const GAMES: { gen: number; label: string }[] = [
   { gen: 9, label: 'Scarlet / Violet' },
 ];
 
-export const getGen = (n: number): Generation => gens.get(n);
+/**
+ * Gen 9 mechanics (modern type chart, Fairy) but with every Pokémon and move that later generations
+ * dropped still available, so any Pokémon from any game can be picked.
+ */
+const allGen = new Generations(Dex, (d) => {
+  const ns = (d as { isNonstandard?: string | null }).isNonstandard;
+  return !!d.exists && (ns == null || ns === 'Past');
+}).get(9);
+
+export const getGen = (n: number): Generation => (n === ALL_GENS ? allGen : gens.get(n));
+
+/** Stable id for caches: the all-generations view must not share keys with real Gen 9. */
+export const genId = (gen: Generation): number => (gen === allGen ? ALL_GENS : gen.num);
 
 /** Types that exist in a generation (no Dark/Steel before 2, no Fairy before 6). */
 export function typesIn(gen: Generation): TypeName[] {
@@ -44,13 +60,13 @@ const poolCache = new Map<string, Specie[]>();
 
 /** Every selectable species in a generation. Battle-only forms and cosmetic variants are skipped. */
 export function speciesPool(gen: Generation, allowMegas: boolean): Specie[] {
-  const key = `${gen.num}:${allowMegas}`;
+  const key = `${genId(gen)}:${allowMegas}`;
   const hit = poolCache.get(key);
   if (hit) return hit;
   const out: Specie[] = [];
   for (const s of gen.species) {
     if (!s.exists || s.num <= 0) continue;
-    if (s.isCosmeticForme || s.battleOnly || s.name.endsWith('-Gmax')) continue;
+    if (s.isCosmeticForme || s.battleOnly || s.name.endsWith('-Gmax') || s.name.endsWith('-Eternamax')) continue;
     if (s.baseSpecies === 'Pikachu' && s.forme) continue;
     if ((s.baseSpecies === 'Arceus' || s.baseSpecies === 'Silvally') && s.forme) continue; // item-dependent type forms
     if ((s.isMega || s.isPrimal) && !allowMegas) continue;
@@ -73,7 +89,7 @@ const learnCache = new Map<string, Promise<Move[]>>();
 
 /** Moves a species can learn in a generation, sorted by name. Cached; resolves lazily. */
 export function learnableMoves(gen: Generation, speciesName: string): Promise<Move[]> {
-  const key = `${gen.num}:${speciesName}`;
+  const key = `${genId(gen)}:${speciesName}`;
   let p = learnCache.get(key);
   if (!p) {
     p = (async () => {

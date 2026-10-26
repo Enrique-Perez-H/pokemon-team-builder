@@ -23,11 +23,13 @@ function power(m: Move, s: Specie): number {
 /**
  * Pick up to four reliable attacking moves: best STAB move for each own type first, then the
  * moves that open the most new super-effective coverage. Status moves are left to the player.
+ * When `foes` (the defending types of each opposing Pokémon) is given, coverage is measured against
+ * those targets instead of every single type.
  */
-export async function autoMoves(gen: Generation, species: Specie): Promise<string[]> {
+export async function autoMoves(gen: Generation, species: Specie, foes?: TypeName[][]): Promise<string[]> {
   const all = await learnableMoves(gen, species.name);
   const pool = all.filter((m) => m.category !== 'Status' && m.basePower >= 40 && !risky(m));
-  const types = typesIn(gen);
+  const targets: TypeName[][] = foes?.length ? foes : typesIn(gen).map((t) => [t]);
   const chosen: Move[] = [];
 
   for (const t of species.types) {
@@ -35,9 +37,9 @@ export async function autoMoves(gen: Generation, species: Specie): Promise<strin
     if (best && power(best, species) >= 40) chosen.push(best);
   }
 
-  const hits = (m: Move) => new Set<TypeName>(types.filter((t) => moveMultiplier(gen, m, [t]) > 1));
+  const hits = (m: Move) => new Set<number>(targets.flatMap((t, i) => (moveMultiplier(gen, m, t) > 1 ? [i] : [])));
   while (chosen.length < 4) {
-    const covered = new Set<TypeName>();
+    const covered = new Set<number>();
     chosen.forEach((m) => hits(m).forEach((t) => covered.add(t)));
     let best: Move | undefined;
     let bestVal = 0;
@@ -51,4 +53,14 @@ export async function autoMoves(gen: Generation, species: Specie): Promise<strin
     chosen.push(best);
   }
   return chosen.map((m) => m.name);
+}
+
+/** Attack types a Pokémon is likely to use: the types of its best attacking moves (STAB if it has none). */
+export async function likelyAttackTypes(gen: Generation, species: Specie): Promise<TypeName[]> {
+  const names = await autoMoves(gen, species);
+  const types = new Set<TypeName>(names.flatMap((n) => {
+    const m = gen.moves.get(n);
+    return m ? [m.type] : [];
+  }));
+  return types.size ? [...types] : [...species.types];
 }

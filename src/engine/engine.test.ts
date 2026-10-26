@@ -133,3 +133,80 @@ describe('autoMoves', () => {
     expect(new Set(types).size).toBe(4);
   });
 });
+
+import { ALL_GENS, genId } from './data';
+
+describe('every generation', () => {
+  const all = getGen(ALL_GENS);
+  it('includes Pokémon and moves from all generations with modern mechanics', async () => {
+    const pool = speciesPool(all, false);
+    expect(pool.length).toBeGreaterThan(speciesPool(gen, false).length + 150);
+    expect(pool.find((s) => s.name === 'Pidgeot')).toBeTruthy();
+    expect(speciesPool(gen, false).find((s) => s.name === 'Pidgeot')).toBeFalsy();
+    expect(defenseTable(all, []).some((r) => r.type === 'Fairy')).toBe(true);
+    const moves = await learnableMoves(all, 'Pidgeot');
+    expect(moves.length).toBeGreaterThan(30);
+  });
+  it('does not share caches with Gen 9', () => {
+    expect(genId(all)).toBe(0);
+    expect(genId(gen)).toBe(9);
+  });
+  it('optimizes across every generation', () => {
+    const res = optimizeTeam({ gen: all, rules: [newRule('species_clause'), newRule('no_legendaries')], locked: Array(6).fill(null), megas: false });
+    expect(res[0].slots).toHaveLength(6);
+  });
+});
+
+import { bestAnswers, counterObjective, fighterFromMember, matchup, matchupMatrix, topCounters } from './counter';
+import type { Foe } from './counter';
+
+describe('counters', () => {
+  const foe = (name: string, attackTypes: any[]): Foe => ({ species: gen.species.get(name)!, attackTypes });
+  const fighter = (name: string) => fighterFromMember(gen, { species: gen.species.get(name)!, moves: [] });
+
+  it('scores type advantages in the right direction', () => {
+    const charizard = foe('Charizard', ['Fire', 'Flying']);
+    const vaporeon = matchup(gen, fighter('Vaporeon'), charizard);
+    expect(vaporeon.off).toBeGreaterThan(0);
+    expect(vaporeon.def).toBeGreaterThanOrEqual(0); // Fire is resisted, Flying is neutral
+    const charVsVap = matchup(gen, fighter('Charizard'), foe('Vaporeon', ['Water']));
+    expect(vaporeon.score).toBeGreaterThan(charVsVap.score);
+  });
+  it('treats immunities as decisive', () => {
+    const garchomp = foe('Garchomp', ['Ground', 'Dragon']);
+    const m = matchup(gen, fighter('Corviknight'), garchomp); // Flying is immune to Ground
+    expect(m.def).toBeGreaterThanOrEqual(0);
+    const bad = matchup(gen, fighter('Pikachu'), garchomp); // Electric cannot touch Ground
+    expect(bad.off).toBe(-2);
+  });
+  it('builds a team that answers every foe', () => {
+    const foes = [foe('Charizard', ['Fire', 'Flying']), foe('Garchomp', ['Ground', 'Dragon']), foe('Gengar', ['Ghost', 'Poison']),
+      foe('Gyarados', ['Water', 'Flying']), foe('Kingambit', ['Dark', 'Steel']), foe('Dragonite', ['Dragon', 'Flying'])];
+    const { objective, rank } = counterObjective(gen, foes);
+    const res = optimizeTeam({ gen, rules: [newRule('species_clause'), newRule('no_legendaries')], locked: Array(6).fill(null), megas: false, objective, rank });
+    expect(res.length).toBeGreaterThan(0);
+    const matrix = matchupMatrix(gen, res[0].slots.map((s, i) => fighterFromMember(gen, { species: s, ability: res[0].abilities[i], moves: [] })), foes);
+    const answers = bestAnswers(matrix, foes.length);
+    expect(answers.every((a) => a.score > 0)).toBe(true);
+    // beats the generic team against this enemy
+    const generic = optimizeTeam({ gen, rules: [newRule('species_clause'), newRule('no_legendaries')], locked: Array(6).fill(null), megas: false })[0];
+    const gm = matchupMatrix(gen, generic.slots.map((s) => fighterFromMember(gen, { species: s, moves: [] })), foes);
+    const sum = (a: ReturnType<typeof bestAnswers>) => a.reduce((x, y) => x + y.score, 0);
+    expect(sum(answers)).toBeGreaterThanOrEqual(sum(bestAnswers(gm, foes.length)));
+  });
+  it('lists individual counters and respects rules', () => {
+    const water = newRule('allowed_types');
+    water.params.types = ['Water'];
+    const list = topCounters(gen, [water], foe('Charizard', ['Fire', 'Flying']), false, 5);
+    expect(list).toHaveLength(5);
+    expect(list.every((c) => c.species.types.includes('Water'))).toBe(true);
+    expect(list[0].matchup.score).toBeGreaterThanOrEqual(list[4].matchup.score);
+  });
+  it('aims move choice at the foes', async () => {
+    const plain = await autoMoves(gen, gen.species.get('Garchomp')!);
+    const vsFlyers = await autoMoves(gen, gen.species.get('Garchomp')!, [['Flying'], ['Flying', 'Dragon'], ['Flying', 'Water']]);
+    const hitsFlyers = vsFlyers.some((m) => ['Ice', 'Rock', 'Electric'].includes(gen.moves.get(m)!.type));
+    expect(hitsFlyers).toBe(true);
+    expect(plain).toHaveLength(4);
+  });
+});

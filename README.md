@@ -22,6 +22,11 @@ npm run build
 - **Team optimizer**: searches the Pokémon your rules allow for the best team (beam search + swap polishing,
   ~0.3 s), balancing defense, type coverage and stats with adjustable weights. It can keep Pokémon you already
   picked, suggests abilities (e.g. Levitate, Water Absorb) and auto-selects four attacking moves per Pokémon.
+- **Every generation** option: all Pokémon and moves from every game, using the modern (Gen 9) type chart.
+- **Counter an enemy team** tab: enter up to six opposing Pokémon (their likely attacks are estimated from their
+  best learnable moves) to see their shared weaknesses and the types they threaten you with, how your current team
+  matches up (1v1 matrix on types, speed and power), the best individual counters for each enemy Pokémon, and a
+  **counter team** built by the optimizer that answers every enemy while staying well rounded. Your rules apply.
 - The picker shows **suggestions** that patch the team's weaknesses and coverage gaps.
 
 ## Deploy to GitHub Pages / install as an app
@@ -37,7 +42,7 @@ The site is a PWA (manifest, icons, service worker): open it in Chrome/Edge/Safa
 ## Layout
 
 - `src/engine/` – pure TypeScript, no UI: `data` (dex access, learnsets), `types` (damage maths), `analysis`,
-  `rules`, `suggest`, `optimize`, `moves`. The future "best team for a game" and "counter this enemy team" features build on this.
+  `rules`, `suggest`, `optimize`, `moves`, `counter`. The future "best team for a game" and "counter this enemy team" features build on this.
 - `src/ui/` – React components.
 
 ## Adding a rule
@@ -47,5 +52,4 @@ for whole-team limits). The rules panel, picker filtering and validation pick it
 
 ## Roadmap
 
-1. Enemy-team mode: enter an opposing team, get counters and a recommended lead/6.
-2. Per-game availability (regional dexes, in-game moves), items, natures/EVs and real stat calculation.
+1. Per-game availability (regional dexes, in-game moves), items, natures/EVs and real stat calculation.

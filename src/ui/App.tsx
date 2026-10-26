@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { GAMES } from '../engine/data';
+import { ALL_GENS, GAMES } from '../engine/data';
 import { validateTeam } from '../engine/rules';
 import { suggestPicks } from '../engine/suggest';
 import type { Member } from '../engine/types';
 import { AnalysisPanel } from './AnalysisPanel';
+import { EnemyTab } from './EnemyTab';
 import { MovePicker } from './MovePicker';
 import { OptimizerPanel } from './OptimizerPanel';
 import { PokemonPicker } from './PokemonPicker';
@@ -14,6 +15,7 @@ import type { Slot } from './state';
 
 export function App() {
   const { state, setState, reset } = useBuilder();
+  const [tab, setTab] = useState<'build' | 'enemy'>('build');
   const [pickSlot, setPickSlot] = useState<number | null>(null);
   const [moveTarget, setMoveTarget] = useState<{ slot: number; index: number } | null>(null);
 
@@ -38,7 +40,17 @@ export function App() {
       gen: n,
       // Moves and abilities are generation-specific; keep the species the new generation still has.
       slots: st.slots.map((s) => (s && getGen(n).species.get(s.species) ? { species: s.species, moves: [] } : null)),
+      enemy: st.enemy.filter((e) => getGen(n).species.get(e)),
     }));
+
+  // Add a Pokémon to the first empty slot (used by the enemy tab's counter suggestions).
+  const addToTeam = (species: string) => {
+    setState((st) => {
+      const i = st.slots.findIndex((s) => !s);
+      if (i < 0) return st;
+      return { ...st, slots: st.slots.map((s, k) => (k === i ? { species, moves: [] } : s)) };
+    });
+  };
 
   const suggestions = useMemo(
     () =>
@@ -55,11 +67,17 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <h1>Pokémon Team Builder</h1>
+        <nav className="nav-tabs">
+          <button className={tab === 'build' ? 'on' : ''} onClick={() => setTab('build')}>Team builder</button>
+          <button className={tab === 'enemy' ? 'on' : ''} onClick={() => setTab('enemy')}>
+            Counter an enemy team{state.enemy.length ? ` (${state.enemy.length})` : ''}
+          </button>
+        </nav>
         <div className="controls">
           <label>
             Game
             <select value={state.gen} onChange={(e) => setGen(Number(e.target.value))}>
-              {GAMES.map((g) => <option key={g.gen} value={g.gen}>Gen {g.gen} — {g.label}</option>)}
+              {GAMES.map((g) => <option key={g.gen} value={g.gen}>{g.gen === ALL_GENS ? g.label : `Gen ${g.gen} — ${g.label}`}</option>)}
             </select>
           </label>
           <label className="check">
@@ -70,6 +88,20 @@ export function App() {
         </div>
       </header>
 
+      {tab === 'enemy' && (
+        <EnemyTab
+          gen={gen}
+          megas={state.megas}
+          rules={state.rules}
+          slots={state.slots}
+          enemy={state.enemy}
+          onEnemy={(enemy) => setState((st) => ({ ...st, enemy }))}
+          onApply={(slots) => { setState((st) => ({ ...st, slots })); setTab('build'); }}
+          onAddToTeam={addToTeam}
+        />
+      )}
+
+      {tab === 'build' && (
       <main className="layout">
         <div className="main-col">
           <div className="team-grid">
@@ -96,6 +128,7 @@ export function App() {
           <OptimizerPanel gen={gen} megas={state.megas} rules={state.rules} slots={state.slots} onApply={(slots) => setState((st) => ({ ...st, slots }))} />
         </aside>
       </main>
+      )}
 
       {pickSlot !== null && (
         <PokemonPicker

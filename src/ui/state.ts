@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { getGen } from '../engine/data';
-import type { Generation } from '../engine/data';
+import type { Generation, TypeName } from '../engine/data';
+import { autoMoves } from '../engine/moves';
+import type { OptimizedTeam } from '../engine/optimize';
 import type { Member } from '../engine/types';
 import { newRule } from '../engine/rules';
 import type { RuleInstance } from '../engine/rules';
@@ -16,6 +18,8 @@ export interface BuilderState {
   megas: boolean;
   slots: (Slot | null)[];
   rules: RuleInstance[];
+  /** Species names of the opposing team (up to 6). */
+  enemy: string[];
 }
 
 const KEY = 'pokemon-team-builder:v1';
@@ -26,6 +30,7 @@ const initial = (): BuilderState => ({
   megas: false,
   slots: Array(TEAM_SIZE).fill(null),
   rules: [newRule('species_clause')],
+  enemy: [],
 });
 
 function load(): BuilderState {
@@ -33,7 +38,7 @@ function load(): BuilderState {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const s = JSON.parse(raw) as BuilderState;
-      if (s.slots?.length === TEAM_SIZE && Array.isArray(s.rules)) return s;
+      if (s.slots?.length === TEAM_SIZE && Array.isArray(s.rules)) return { ...s, enemy: s.enemy ?? [] };
     }
   } catch {
     /* fall through to defaults */
@@ -50,7 +55,7 @@ export function useBuilder() {
       /* storage unavailable */
     }
   }, [state]);
-  return { state, setState, reset: () => setState(initial()) };
+  return { state, setState, reset: () => setState((st) => ({ ...initial(), enemy: st.enemy })) };
 }
 
 /** Turn saved slots into engine members; drops anything the generation does not know. */
@@ -68,3 +73,23 @@ export function resolveSlots(gen: Generation, slots: (Slot | null)[]): (Member |
 }
 
 export { getGen };
+
+
+/**
+ * Turn an optimizer result into slots: kept Pokémon stay as they are, new ones get the suggested
+ * ability and automatically chosen attacking moves (aimed at `foes` when given).
+ */
+export async function slotsFromResult(
+  gen: Generation,
+  team: OptimizedTeam,
+  kept: (Slot | null)[],
+  foes?: TypeName[][],
+): Promise<Slot[]> {
+  return Promise.all(
+    team.slots.map(async (sp, i): Promise<Slot> => {
+      const old = kept[i];
+      if (old && old.species === sp.name) return old;
+      return { species: sp.name, ability: team.abilities[i], moves: await autoMoves(gen, sp, foes) };
+    }),
+  );
+}

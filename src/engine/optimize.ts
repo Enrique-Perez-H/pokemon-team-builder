@@ -26,6 +26,10 @@ export interface OptimizeOptions {
   candidates?: number;
   /** How many distinct teams to return. */
   results?: number;
+  /** Custom objective (higher is better). Defaults to the general defense/offense/stats score. */
+  objective?: (feats: Feat[]) => { total: number; parts: Weights };
+  /** Custom ranking used to pre-select candidates. */
+  rank?: (f: Feat) => number;
 }
 
 export interface OptimizedTeam {
@@ -38,7 +42,7 @@ export interface OptimizedTeam {
 }
 
 /** Precomputed per-Pokémon vectors so scoring a team is a few hundred additions. */
-interface Feat {
+export interface Feat {
   s: Specie;
   ability?: string;
   def: Float64Array;
@@ -48,7 +52,7 @@ interface Feat {
   side: -1 | 0 | 1;
 }
 
-function makeFeat(gen: Generation, s: Specie, types: ReturnType<typeof typesIn>): Feat {
+export function makeFeat(gen: Generation, s: Specie, types: ReturnType<typeof typesIn>): Feat {
   const vec = (ability?: string) => Float64Array.from(types, (t) => defensiveMultiplier(gen, { species: s, ability, moves: [] }, t));
   let def = vec();
   let ability: string | undefined;
@@ -131,11 +135,13 @@ export function optimizeTeam(opts: OptimizeOptions): OptimizedTeam[] {
 
   // Pre-rank the individually legal pool.
   const pool = speciesPool(gen, megas).filter((s) => !lockedNames.has(s.name) && speciesViolations(rules, s).length === 0);
-  const single = (f: Feat) => {
+  const defaultSingle = (f: Feat) => {
     let v = f.bst / 40;
     for (let t = 0; t < T; t++) v += f.def[t] < 1 ? 0.3 : f.def[t] > 1 ? -0.3 * f.def[t] : 0;
     return v + f.off.reduce((a, x) => a + x, 0) * 0.25;
   };
+  const single = opts.rank ?? defaultSingle;
+  const objective = opts.objective ?? ((F: Feat[]) => scoreFeats(F, T, w));
   const cands = pool
     .map((s) => ({ s, f: feat(s) }))
     .sort((a, b) => single(b.f) - single(a.f))
@@ -143,7 +149,7 @@ export function optimizeTeam(opts: OptimizeOptions): OptimizedTeam[] {
 
   const base = lockedSpecies.map((s) => s);
   const lockedFeats = base.map(feat);
-  const total = (idx: number[]) => scoreFeats([...lockedFeats, ...idx.map((i) => cands[i].f)], T, w);
+  const total = (idx: number[]) => objective([...lockedFeats, ...idx.map((i) => cands[i].f)]);
   const members = (idx: number[]) => [...base, ...idx.map((i) => cands[i].s)];
 
   let beam: State[] = [{ idx: [], score: total([]).total }];

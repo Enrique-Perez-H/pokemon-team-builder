@@ -142,3 +142,31 @@ select, input[type=text], input[type=search], input:not([type]), input[type=numb
 .opt-mon { display: flex; flex-direction: column; align-items: center; text-align: center; min-width: 0; }
 .opt-mon small { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .opt-parts { font-size: 12px; }
+
+.nav-tabs { display: flex; gap: 4px; }
+.nav-tabs button { background: none; border: 0; padding: 8px 14px; color: var(--muted); border-bottom: 2px solid transparent; font-weight: 600; }
+.nav-tabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.enemy-layout { padding-top: 20px; }
+.enemy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin: 12px 0; }
+.enemy-card { display: flex; align-items: center; gap: 10px; background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.enemy-card.empty { justify-content: center; color: var(--muted); border-style: dashed; min-height: 76px; background: none; }
+.enemy-card.empty:hover { border-color: var(--accent); color: var(--text); }
+.enemy-info { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.sprite-btn.small { width: 64px; height: 64px; }
+.enemy-profile { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; margin-top: 6px; }
+.tagged { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.versus .who { display: flex; align-items: center; gap: 6px; text-align: left; white-space: nowrap; }
+.cell.win2 { background: #1f6b44; color: #d6ffe8; }
+.cell.win { background: #1f5b3d; color: #bfe9d0; }
+.cell.even { background: var(--panel2); color: var(--muted); }
+.cell.lose { background: #7a3b2c; color: #ffd8c8; }
+.cell.lose2 { background: #a5322b; color: #fff; }
+.counter-row { display: grid; grid-template-columns: 170px 1fr; gap: 12px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.counter-foe { display: flex; align-items: center; gap: 6px; }
+.counter-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; }
+.counter-list .suggest { border-color: var(--line); }
+.counter-list .suggest:hover { border-color: var(--accent); }
+.answers { display: flex; flex-direction: column; gap: 1px; }
+.answers .good { color: var(--good); }
+.answers .bad { color: var(--bad); }
+@media (max-width: 700px) { .counter-row { grid-template-columns: 1fr; } .topbar { padding: 10px 14px; } .layout { padding: 14px; } }

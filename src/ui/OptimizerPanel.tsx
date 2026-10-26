@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import type { Generation, Specie } from '../engine/data';
+import type { Generation } from '../engine/data';
 import { DEFAULT_WEIGHTS, optimizeTeam } from '../engine/optimize';
 import type { OptimizedTeam, Weights } from '../engine/optimize';
-import { autoMoves } from '../engine/moves';
 import type { RuleInstance } from '../engine/rules';
 import { Sprite } from './common';
+import { slotsFromResult } from './state';
 import type { Slot } from './state';
 
 interface Props {
@@ -44,14 +44,7 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply }: Props) {
 
   const apply = async (team: OptimizedTeam) => {
     setApplying(true);
-    const next = await Promise.all(
-      team.slots.map(async (sp: Specie, i): Promise<Slot> => {
-        const old = lockedSlots[i];
-        if (old && old.species === sp.name) return old;
-        return { species: sp.name, ability: team.abilities[i], moves: await autoMoves(gen, sp) };
-      }),
-    );
-    onApply(next);
+    onApply(await slotsFromResult(gen, team, lockedSlots));
     setApplying(false);
     setResults(null);
   };
