@@ -376,6 +376,7 @@ describe('optimizer enforces team-wide rules', () => {
 
 import { exportTeam, importTeam } from './showdown';
 import type { Slot } from './team';
+import type { Specie } from './data';
 
 describe('showdown format', () => {
   const garchomp: Slot = {
@@ -430,5 +431,67 @@ describe('team report', () => {
     const r = teamReport(gen, mk(['Garchomp', 'Gengar']));
     expect(r.physical + r.special + r.mixed).toBe(2);
     expect(r.fast).toBe(2);
+  });
+});
+
+import { buildMatchupTable, prepareFoes, realMatchup, topCountersReal } from './realdamage';
+import { optimizeVsFoes, pickThreats } from './search';
+
+describe('real-damage search', () => {
+  const sp = (n: string) => gen.species.get(n)!;
+  it('scores matchups from real damage, in the right direction', async () => {
+    const [charizard] = await prepareFoes(gen, [sp('Charizard')]);
+    const [vaporeon] = await prepareFoes(gen, [sp('Vaporeon')]);
+    const t1 = await buildMatchupTable(gen, [sp('Vaporeon')], [charizard]);
+    const t2 = await buildMatchupTable(gen, [sp('Charizard')], [vaporeon]);
+    const water = t1.get('Vaporeon')![0];
+    const fire = t2.get('Charizard')![0];
+    expect(water.score).toBeGreaterThan(0);
+    expect(water.score).toBeGreaterThan(fire.score);
+    expect(water.ourPct).toBeGreaterThan(water.theirPct);
+    expect(water.ourMove).toBeTruthy();
+    expect(realMatchup(9, { combatant: charizard.combatant, moves: charizard.moves, speed: charizard.speed }, vaporeon).theirPct).toBeGreaterThan(0);
+  });
+  it('builds a counter team that beats a type-only team on real damage', async () => {
+    const foes = ['Charizard', 'Garchomp', 'Gengar', 'Gyarados', 'Kingambit', 'Dragonite'].map(sp);
+    const rules = [newRule('species_clause'), newRule('no_legendaries'), newRule('no_paradox')];
+    const locked = Array(6).fill(null);
+    const t0 = Date.now();
+    const real = await optimizeVsFoes({ gen, rules, locked, megas: false, foes, real: true, shortlist: 70 });
+    const ms = Date.now() - t0;
+    const typeOnly = await optimizeVsFoes({ gen, rules, locked, megas: false, foes, real: false });
+    expect(ms).toBeLessThan(25000);
+    expect(real.teams.length).toBeGreaterThan(0);
+    expect(validateTeam(rules, real.teams[0].slots)).toEqual([]);
+    // Judge both teams on the same real-damage numbers.
+    const foeSets = real.foeSets;
+    const judge = async (team: Specie[]) => {
+      const table = await buildMatchupTable(gen, team, foeSets);
+      return foeSets.reduce((sum, _f, e) => sum + Math.max(...team.map((s) => table.get(s.name)![e].score)), 0);
+    };
+    const realScore = await judge(real.teams[0].slots);
+    const typeScore = await judge(typeOnly.teams[0].slots);
+    expect(realScore).toBeGreaterThanOrEqual(typeScore - 0.01);
+    for (let e = 0; e < foes.length; e++) {
+      const best = Math.max(...real.teams[0].slots.map((s) => real.table.get(s.name)![e].score));
+      expect(best).toBeGreaterThan(0);
+    }
+  }, 60000);
+  it('re-ranks individual counters by real damage and respects rules', async () => {
+    const [foe] = await prepareFoes(gen, [sp('Charizard')]);
+    const water = newRule('allowed_types');
+    water.params.types = ['Water'];
+    const list = await topCountersReal(gen, [water], foe, false, 5);
+    expect(list).toHaveLength(5);
+    expect(list.every((c) => c.species.types.includes('Water'))).toBe(true);
+    expect(list[0].matchup.score).toBeGreaterThanOrEqual(list[4].matchup.score);
+  });
+  it('picks a varied, rule-legal threat benchmark', () => {
+    const rules = [newRule('species_clause'), newRule('no_legendaries'), newRule('no_paradox')];
+    const threats = pickThreats(gen, rules, false, 10);
+    expect(threats).toHaveLength(10);
+    expect(threats.every((s) => !isLegendary(s) && !s.tags.includes('Paradox'))).toBe(true);
+    const mains = threats.map((s) => s.types[0]);
+    for (const t of new Set(mains)) expect(mains.filter((m) => m === t).length).toBeLessThanOrEqual(2);
   });
 });

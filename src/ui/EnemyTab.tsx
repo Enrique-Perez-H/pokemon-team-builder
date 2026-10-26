@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { genId } from '../engine/data';
 import type { Generation } from '../engine/data';
 import { defenseTable } from '../engine/analysis';
-import { bestAnswers, counterObjective, fighterFromMember, matchupMatrix, topCounters } from '../engine/counter';
+import { bestAnswers, fighterFromMember, matchup, topCounters } from '../engine/counter';
 import type { Foe, Matchup } from '../engine/counter';
-import { autoMoves } from '../engine/moves';
 import { bestMove, combatant } from '../engine/calc';
-import { suggestBuild } from '../engine/sets';
-import { optimizeTeam } from '../engine/optimize';
+import { moveTypesOf } from '../engine/moves';
+import { prepareFoes, realMatchup, topCountersReal } from '../engine/realdamage';
+import type { FoeSet, RealCounter, RealMatchup } from '../engine/realdamage';
+import { computeStats } from '../engine/sets';
+import { optimizeVsFoes } from '../engine/search';
+import type { VsFoesResult } from '../engine/search';
 import type { OptimizedTeam } from '../engine/optimize';
 import type { Member } from '../engine/types';
 import type { RuleInstance } from '../engine/rules';
@@ -32,39 +35,42 @@ interface Props {
 const cellClass = (m: Matchup) =>
   m.score >= 2 ? 'win2' : m.score >= 0.75 ? 'win' : m.score > -0.75 ? 'even' : m.score > -2 ? 'lose' : 'lose2';
 
+const isReal = (m: Matchup | RealMatchup): m is RealMatchup => 'ourPct' in m;
+
+/** Damage as a percentage; anything past a knock-out reads as 100%+. */
+const pct = (x: number) => (x >= 100 ? '100%+' : `${Math.round(x)}%`);
+
 const fmt = (n: number) => (n > 0 ? `+${n.toFixed(1)}` : n.toFixed(1));
 
 export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, onAddToTeam, onLockAll }: Props) {
   const [picking, setPicking] = useState<number | null>(null);
-  const [moves, setMoves] = useState<Record<string, string[]>>({});
+  const [foeSets, setFoeSets] = useState<FoeSet[]>([]);
+  const [real, setReal] = useState(true);
+  const [realCounters, setRealCounters] = useState<Record<string, RealCounter[]>>({});
   const [dir, setDir] = useState<'mine' | 'theirs'>('mine');
   const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [applying, setApplying] = useState(false);
-  const [results, setResults] = useState<OptimizedTeam[] | null>(null);
+  const [run, setRun] = useState<VsFoesResult | null>(null);
+  const results = run?.teams ?? null;
+  const n = genId(gen);
 
   const species = useMemo(
-    () => enemy.flatMap((n) => { const s = gen.species.get(n); return s ? [s] : []; }),
+    () => enemy.flatMap((name) => { const s = gen.species.get(name); return s ? [s] : []; }),
     [gen, enemy],
   );
 
-  // Estimate what each enemy Pokémon will attack with (its best learnable attacking moves).
+  // Give each enemy Pokémon a concrete set: its likely attacking moves and a standard competitive build.
   useEffect(() => {
     let live = true;
-    species.forEach((s) => {
-      const key = `${genId(gen)}:${s.name}`;
-      if (moves[key]) return;
-      autoMoves(gen, s).then((m) => live && setMoves((cur) => ({ ...cur, [key]: m })));
-    });
+    prepareFoes(gen, species).then((f) => live && setFoeSets(f));
     return () => { live = false; };
-  }, [gen, species]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gen, species]);
 
-  const foeMoves = (name: string) => moves[`${genId(gen)}:${name}`] ?? [];
-  const typesOf = (names: string[]) => [...new Set(names.flatMap((n) => { const m = gen.moves.get(n); return m ? [m.type] : []; }))];
-  const foes: Foe[] = species.map((s) => {
-    const t = typesOf(foeMoves(s.name));
-    return { species: s, attackTypes: t.length ? t : [...s.types] };
-  });
-  const mine = resolveSlots(gen, slots).filter((m): m is Member => !!m);
+  const setFor = (name: string) => foeSets.find((f) => f.species.name === name);
+  const foes: Foe[] = species.map((s) => ({ species: s, attackTypes: moveTypesOf(gen, setFor(s.name)?.moves ?? [], s) }));
+  const members = resolveSlots(gen, slots);
+  const mineInfo = slots.flatMap((slot, i) => (slot && members[i] ? [{ slot, m: members[i] as Member }] : []));
   const foeTypes = foes.map((f) => [...f.species.types]);
 
   const profile = useMemo(
@@ -73,43 +79,60 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
   );
   const threatUnion = [...new Set(foes.flatMap((f) => f.attackTypes))];
 
-  const matrix = mine.length && foes.length ? matchupMatrix(gen, mine.map((m) => fighterFromMember(gen, m)), foes) : [];
+  // Your team vs the enemy: real damage where your Pokémon have moves, type matchups otherwise.
+  const matrix: (Matchup | RealMatchup)[][] = useMemo(
+    () => mineInfo.map(({ slot, m }) => {
+      const build = buildFor(gen, slot, m.species, m.moves);
+      const us = { combatant: combatant(m.species.name, build), moves: slot.moves, speed: computeStats(gen, m.species, build).spe };
+      const fighter = fighterFromMember(gen, m);
+      return foes.map((f) => {
+        const fs = foeSets.find((x) => x.species.name === f.species.name);
+        return real && fs && slot.moves.length ? realMatchup(n, us, fs) : matchup(gen, fighter, f);
+      });
+    }),
+    [gen, slots, foeSets, species, real], // eslint-disable-line react-hooks/exhaustive-deps
+  );
   const answers = matrix.length ? bestAnswers(matrix, foes.length) : [];
 
+  // Quick type-based counters show immediately; real-damage ones replace them when ready.
   const counters = useMemo(
     () => foes.map((f) => topCounters(gen, rules, f, megas, 6)),
-    [gen, rules, megas, species, moves], // eslint-disable-line react-hooks/exhaustive-deps
+    [gen, rules, megas, foeSets, species], // eslint-disable-line react-hooks/exhaustive-deps
   );
+  useEffect(() => {
+    if (!real || !foeSets.length) { setRealCounters({}); return; }
+    let live = true;
+    Promise.all(foeSets.map((f) => topCountersReal(gen, rules, f, megas, 6))).then((lists) => {
+      if (live) setRealCounters(Object.fromEntries(foeSets.map((f, i) => [f.species.name, lists[i]])));
+    });
+    return () => { live = false; };
+  }, [real, foeSets, rules, megas, gen]);
 
-  // Real damage: our chosen moves and builds against standard builds of the enemy's likely moves.
+  // Real damage: our chosen moves and builds against the enemy's likely moves on standard builds.
   const damage = useMemo(() => {
     if (!foes.length) return null;
-    const n = genId(gen);
-    const mineFull = slots.flatMap((slot) => {
-      const sp = slot && gen.species.get(slot.species);
-      if (!slot || !sp) return [];
-      const mv = slot.moves.flatMap((x) => { const m = gen.moves.get(x); return m ? [m] : []; });
-      return [{ name: sp.name, moves: slot.moves, c: combatant(sp.name, buildFor(gen, slot, sp, mv)) }];
-    });
-    const theirs = foes.map((f) => {
-      const names = foeMoves(f.species.name);
-      const mv = names.flatMap((x) => { const m = gen.moves.get(x); return m ? [m] : []; });
-      return { name: f.species.name, moves: names, c: combatant(f.species.name, suggestBuild(gen, f.species, mv)) };
+    const mineFull = mineInfo.map(({ slot, m }) => ({
+      name: m.species.name, moves: slot.moves, c: combatant(m.species.name, buildFor(gen, slot, m.species, m.moves)),
+    }));
+    const theirs = foes.flatMap((f) => {
+      const fs = foeSets.find((x) => x.species.name === f.species.name);
+      return fs ? [{ name: f.species.name, moves: fs.moves, c: fs.combatant }] : [];
     });
     const mineVsTheirs = mineFull.map((a) => theirs.map((d) => bestMove(n, a.c, d.c, a.moves)));
     const theirsVsMine = theirs.map((a) => mineFull.map((d) => bestMove(n, a.c, d.c, a.moves)));
     return { mineFull, theirs, mineVsTheirs, theirsVsMine };
-  }, [gen, slots, foes.length, moves]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [gen, slots, foeSets, species]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const build = () => {
+  const build = async () => {
     setBusy(true);
-    setResults(null);
-    setTimeout(() => {
+    setRun(null);
+    setProgress(0);
+    try {
       const locked = slots.map((s) => (s?.locked ? gen.species.get(s.species) ?? null : null));
-      const { objective, rank } = counterObjective(gen, foes);
-      setResults(optimizeTeam({ gen, rules, locked, megas, objective, rank }));
+      setRun(await optimizeVsFoes({ gen, rules, locked, megas, foes: species, real, onProgress: setProgress }));
+    } finally {
       setBusy(false);
-    }, 30);
+    }
   };
 
   const apply = async (team: OptimizedTeam) => {
@@ -123,13 +146,19 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
     if (name === null) next.splice(i, 1);
     else next[i] = name;
     onEnemy(next.slice(0, TEAM_SIZE));
-    setResults(null);
+    setRun(null);
   };
 
-  const resultAnswers = (t: OptimizedTeam) => {
-    const fighters = t.slots.map((s, i) => fighterFromMember(gen, { species: s, ability: t.abilities[i], moves: [] }));
-    return bestAnswers(matchupMatrix(gen, fighters, foes), foes.length).map((a) => ({ ...a, name: t.slots[a.member]?.name ?? '—' }));
-  };
+  /** For each foe, the member of a result team that handles it best (by real damage when we have it). */
+  const resultAnswers = (t: OptimizedTeam) =>
+    foes.map((_, e) => {
+      const rated = t.slots.map((s, i) => {
+        const real = run?.table.get(s.name)?.[e];
+        const m = real ?? matchup(gen, fighterFromMember(gen, { species: s, ability: t.abilities[i], moves: [] }), foes[e]);
+        return { name: s.name, m };
+      }).sort((a, b) => b.m.score - a.m.score)[0];
+      return { foe: e, name: rated.name, score: rated.m.score, detail: isReal(rated.m) && rated.m.ourMove ? `${rated.m.ourMove} ${pct(rated.m.ourPct)} · takes ${pct(rated.m.theirPct)}` : '' };
+    });
 
   return (
     <div className="layout enemy-layout">
@@ -178,7 +207,8 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
         {foes.length > 0 && (
           <section className="panel">
             <h2>Your current team vs. the enemy</h2>
-            {!mine.length ? (
+            {mineInfo.length > 0 && <p className="muted">{real ? 'Scored from real damage for Pokémon that have moves; hover a cell for the numbers.' : 'Scored from types and speed.'}</p>}
+            {!mineInfo.length ? (
               <p className="muted">Add Pokémon on the Team builder tab to see how they match up, or build a counter team below.</p>
             ) : (
               <>
@@ -191,11 +221,11 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
                       </tr>
                     </thead>
                     <tbody>
-                      {mine.map((m, i) => (
+                      {mineInfo.map(({ m }, i) => (
                         <tr key={i}>
                           <td className="who"><Sprite name={m.species.name} size={30} types={m.species.types} />{m.species.name}</td>
                           {matrix[i].map((mm, j) => (
-                            <td key={j} className={`cell ${cellClass(mm)}`} title={`Offense ${fmt(mm.off)} · Defense ${fmt(mm.def)} · Speed ${fmt(mm.speed)}`}>{fmt(mm.score)}</td>
+                            <td key={j} className={`cell ${cellClass(mm)}`} title={isReal(mm) && mm.ourMove ? `${mm.ourMove} ≈ ${pct(mm.ourPct)} of their HP; their ${mm.theirMove ?? 'best move'} ≈ ${pct(mm.theirPct)} of yours · Speed ${fmt(mm.speed)}` : `Offense ${fmt(mm.off)} · Defense ${fmt(mm.def)} · Speed ${fmt(mm.speed)}`}>{fmt(mm.score)}</td>
                           ))}
                         </tr>
                       ))}
@@ -205,7 +235,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
                 <div className="insights">
                   {answers.map((a) => {
                     const foe = foes[a.foe].species.name;
-                    const who = mine[a.member]?.species.name;
+                    const who = mineInfo[a.member]?.m.species.name;
                     return a.score >= 0.75 ? (
                       <div key={a.foe} className="insight good">✓ {foe}: answered by {who} ({fmt(a.score)})</div>
                     ) : (
@@ -257,15 +287,21 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
         {foes.length > 0 && (
           <section className="panel">
             <h2>Best individual counters</h2>
-            <p className="muted">Highest-rated matchups among Pokémon your rules allow. Click one to add it to your team.</p>
+            <p className="muted">Highest-rated matchups among Pokémon your rules allow{real ? ', judged by real damage (their best move on each side)' : ''}. Click one to add it to your team.</p>
             {foes.map((f, i) => (
               <div key={f.species.name + i} className="counter-row">
                 <div className="counter-foe"><Sprite name={f.species.name} size={40} types={f.species.types} /><b>vs {f.species.name}</b></div>
                 <div className="counter-list">
-                  {counters[i]?.map((c) => (
-                    <button key={c.species.name} className="suggest" onClick={() => onAddToTeam(c.species.name)} title={`Offense ${fmt(c.matchup.off)} · Defense ${fmt(c.matchup.def)} · Speed ${fmt(c.matchup.speed)}`}>
+                  {(real && realCounters[f.species.name]
+                    ? realCounters[f.species.name].map((c) => ({
+                        species: c.species, score: c.matchup.score,
+                        detail: `${c.matchup.ourMove ?? '—'} ${pct(c.matchup.ourPct)} · takes ${pct(c.matchup.theirPct)}`,
+                      }))
+                    : (counters[i] ?? []).map((c) => ({ species: c.species, score: c.matchup.score, detail: `Offense ${fmt(c.matchup.off)} · Defense ${fmt(c.matchup.def)}` }))
+                  ).map((c) => (
+                    <button key={c.species.name} className="suggest" onClick={() => onAddToTeam(c.species.name)} title={c.detail}>
                       <Sprite name={c.species.name} size={40} types={c.species.types} />
-                      <div><strong>{c.species.name}</strong><small>{fmt(c.matchup.score)}</small></div>
+                      <div><strong>{c.species.name}</strong><small>{fmt(c.score)} · {c.detail}</small></div>
                     </button>
                   ))}
                 </div>
@@ -291,8 +327,12 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
                 </span>
               )}
             </div>
+            <label className="check" title="Runs the damage calculator for the most promising Pokémon against each enemy. Slower, more accurate.">
+              <input type="checkbox" checked={real} onChange={(e) => { setReal(e.target.checked); setRun(null); }} />
+              Judge by real damage (recommended)
+            </label>
             <button className="btn primary" disabled={!foes.length || busy || applying} onClick={build}>
-              {busy ? 'Searching…' : foes.length ? 'Build counter team' : 'Add enemy Pokémon first'}
+              {busy ? (real ? `Calculating damage… ${Math.round(progress * 100)}%` : 'Searching…') : foes.length ? 'Build counter team' : 'Add enemy Pokémon first'}
             </button>
           </div>
           {results && results.length === 0 && <p className="insight bad">No team satisfies these rules. Try relaxing one.</p>}
@@ -314,7 +354,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
                     <div className="answers">
                       {ans.map((a) => (
                         <small key={a.foe} className={a.score >= 0.75 ? 'good' : 'bad'}>
-                          {foes[a.foe].species.name} → {a.name} ({fmt(a.score)})
+                          {foes[a.foe].species.name} → {a.name} ({fmt(a.score)}){a.detail ? ` · ${a.detail}` : ''}
                         </small>
                       ))}
                     </div>

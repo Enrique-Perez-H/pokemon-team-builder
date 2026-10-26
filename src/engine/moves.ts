@@ -64,3 +64,12 @@ export async function likelyAttackTypes(gen: Generation, species: Specie): Promi
   }));
   return types.size ? [...types] : [...species.types];
 }
+
+/** The distinct attack types of a list of move names (the Pokémon's own types when none are known). */
+export function moveTypesOf(gen: Generation, names: string[], species: Specie): TypeName[] {
+  const types = new Set<TypeName>(names.flatMap((n) => {
+    const m = gen.moves.get(n);
+    return m ? [m.type] : [];
+  }));
+  return types.size ? [...types] : [...species.types];
+}

@@ -41,6 +41,10 @@ npm run build
   (your team, the enemy team or anyone), with builds, stat boosts, status, weather, terrain, screens and crits. It
   shows each move's damage range, KO chance and all 16 rolls, in both directions, and has a swap button.
 - The enemy tab's **damage check** shows the real best-move damage between your team and the enemy.
+- **Real-damage search**: the counter-team search and an optional "test against top threats" mode score teams with the
+  damage calculator (best move on each side, speed and knock-out thresholds). Candidates are shortlisted cheaply,
+  calculated once against each foe, then the beam search looks the numbers up, so it still takes about a second.
+  Individual counters and the matchup table use the same real numbers.
 - The picker shows **suggestions** that patch the team's weaknesses and coverage gaps.
 
 ## Deploy to GitHub Pages / install as an app
@@ -67,5 +71,5 @@ for whole-team limits). The rules panel, picker filtering and validation pick it
 ## Roadmap
 
 1. Per-game availability (regional dexes, in-game moves) and game-specific rules.
-2. Use real damage inside the optimizer and counter scoring (today they use type matchups).
+2. Support moves and team roles (hazards, recovery, pivots, speed control) in generated sets.
 3. Doubles, Tera types, held-item suggestions and set sharing.

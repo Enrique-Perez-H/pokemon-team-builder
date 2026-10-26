@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { Generation } from '../engine/data';
 import { DEFAULT_WEIGHTS, optimizeTeam } from '../engine/optimize';
+import { optimizeVsFoes, pickThreats } from '../engine/search';
 import type { OptimizedTeam, Weights } from '../engine/optimize';
 import type { RuleInstance } from '../engine/rules';
 import { Sprite } from './common';
@@ -33,21 +34,36 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }:
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [results, setResults] = useState<OptimizedTeam[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [threats, setThreats] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const [benchmark, setBenchmark] = useState<string[] | null>(null);
   const [applying, setApplying] = useState(false);
 
   const filled = slots.filter(Boolean).length;
   const kept = slots.filter((s) => s?.locked).length;
   const lockedSlots = slots.map((s) => (s?.locked ? s : null));
 
-  const run = () => {
+  const run = async () => {
     setBusy(true);
     setResults(null);
-    // Yield so the spinner paints before the (synchronous) search runs.
-    setTimeout(() => {
+    setBenchmark(null);
+    setProgress(0);
+    try {
       const locked = lockedSlots.map((s) => (s ? gen.species.get(s.species) ?? null : null));
-      setResults(optimizeTeam({ gen, rules, locked, megas, weights }));
+      if (threats) {
+        // Real-damage mode: judge teams against the strongest Pokémon these rules allow.
+        const foes = pickThreats(gen, rules, megas, 10);
+        const r = await optimizeVsFoes({ gen, rules, locked, megas, foes, weights, real: true, generalShare: 1, onProgress: setProgress });
+        setBenchmark(foes.map((f) => f.name));
+        setResults(r.teams);
+      } else {
+        // Yield so the spinner paints before the (synchronous) search runs.
+        await new Promise((r) => setTimeout(r, 30));
+        setResults(optimizeTeam({ gen, rules, locked, megas, weights }));
+      }
+    } finally {
       setBusy(false);
-    }, 30);
+    }
   };
 
   const apply = async (team: OptimizedTeam) => {
@@ -90,12 +106,20 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }:
             </span>
           )}
         </div>
+        <label className="check" title="Also scores each team on real damage against the 10 strongest Pokémon your rules allow, so it picks Pokémon that can actually beat and survive them.">
+          <input type="checkbox" checked={threats} onChange={(e) => { setThreats(e.target.checked); setResults(null); }} />
+          Test against top threats (real damage)
+        </label>
+        {threats && <small className="muted">“Top threats” are the strongest Pokémon your rules allow. Add rules like No legendaries to make the benchmark realistic.</small>}
         <button className="btn primary" disabled={busy || applying} onClick={run}>
-          {busy ? 'Searching…' : kept ? 'Fill the other slots' : 'Build best team'}
+          {busy ? (threats ? `Calculating damage… ${Math.round(progress * 100)}%` : 'Searching…') : kept ? 'Fill the other slots' : 'Build best team'}
         </button>
       </div>
       {results && results.length === 0 && (
         <p className="insight bad">No team satisfies these rules. Try relaxing one.</p>
+      )}
+      {results && results.length > 0 && benchmark && (
+        <small className="muted">Benchmarked against: {benchmark.join(', ')}.</small>
       )}
       {results && results.length > 0 && (
         <div className="opt-results">
@@ -110,9 +134,11 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }:
                   </div>
                 ))}
               </div>
-              <div className="opt-parts muted">
-                Def {r.parts.defense.toFixed(1)} · Off {r.parts.offense.toFixed(1)} · Stats {r.parts.stats.toFixed(1)}
-              </div>
+              {!benchmark && (
+                <div className="opt-parts muted">
+                  Def {r.parts.defense.toFixed(1)} · Off {r.parts.offense.toFixed(1)} · Stats {r.parts.stats.toFixed(1)}
+                </div>
+              )}
               <button className="btn primary" disabled={applying} onClick={() => apply(r)}>Use this team</button>
             </div>
           ))}

@@ -93,11 +93,20 @@ const shape = (x: number) => (x >= 0 ? x : x * 1.5);
  * Objective for the optimizer: for every foe, how well does our best Pokémon handle it (plus a little credit for a
  * backup), with the general team-soundness score as a tie-breaker so the team is still well rounded.
  */
-export function counterObjective(gen: Generation, foes: Foe[], weights: Weights = DEFAULT_WEIGHTS, generalShare = 0.35) {
+export function counterObjective(
+  gen: Generation,
+  foes: Foe[],
+  weights: Weights = DEFAULT_WEIGHTS,
+  generalShare = 0.35,
+  /** Precomputed matchups by Pokémon name (e.g. from real damage). Pokémon missing here fall back to type matchups. */
+  table?: Map<string, Matchup[]>,
+) {
   const types = typesIn(gen);
   const index = new Map(types.map((t, i) => [t, i]));
   const cache = new WeakMap<Feat, Matchup[]>();
   const vs = (f: Feat): Matchup[] => {
+    const given = table?.get(f.s.name);
+    if (given) return given;
     let hit = cache.get(f);
     if (!hit) {
       const fighter: Fighter = {

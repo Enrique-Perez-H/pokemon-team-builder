@@ -30,6 +30,8 @@ export interface OptimizeOptions {
   objective?: (feats: Feat[]) => { total: number; parts: Weights };
   /** Custom ranking used to pre-select candidates. */
   rank?: (f: Feat) => number;
+  /** Search only these Pokémon (already filtered/ranked by the caller) instead of the whole legal pool. */
+  pool?: Specie[];
 }
 
 export interface OptimizedTeam {
@@ -103,6 +105,30 @@ export function scoreSpecies(gen: Generation, team: Specie[], w: Weights = DEFAU
   return scoreFeats(team.map((s) => makeFeat(gen, s, types)), types.length, w);
 }
 
+/** Cheap standalone rating of one Pokémon (raw stats plus type resistances and offensive reach). */
+function defaultRank(f: Feat, T: number): number {
+  let v = f.bst / 40;
+  for (let t = 0; t < T; t++) v += f.def[t] < 1 ? 0.3 : f.def[t] > 1 ? -0.3 * f.def[t] : 0;
+  return v + f.off.reduce((a, x) => a + x, 0) * 0.25;
+}
+
+/**
+ * The `n` most promising rule-legal Pokémon for a search, best first. Callers that need an expensive
+ * per-candidate computation (like real damage) run it on this shortlist, then pass it back as `pool`.
+ */
+export function shortlistCandidates(opts: Omit<OptimizeOptions, 'objective'>, n: number): Specie[] {
+  const { gen, rules, locked, megas } = opts;
+  const types = typesIn(gen);
+  const lockedNames = new Set(locked.filter((s): s is Specie => !!s).map((s) => s.name));
+  const rank = opts.rank ?? ((f: Feat) => defaultRank(f, types.length));
+  return (opts.pool ?? speciesPool(gen, megas))
+    .filter((s) => !lockedNames.has(s.name) && speciesViolations(rules, s).length === 0)
+    .map((s) => ({ s, r: rank(makeFeat(gen, s, types)) }))
+    .sort((a, b) => b.r - a.r)
+    .slice(0, n)
+    .map((x) => x.s);
+}
+
 interface State {
   idx: number[]; // indexes into the candidate list
   score: number;
@@ -134,13 +160,8 @@ export function optimizeTeam(opts: OptimizeOptions): OptimizedTeam[] {
   const need = locked.length - lockedSpecies.length;
 
   // Pre-rank the individually legal pool.
-  const pool = speciesPool(gen, megas).filter((s) => !lockedNames.has(s.name) && speciesViolations(rules, s).length === 0);
-  const defaultSingle = (f: Feat) => {
-    let v = f.bst / 40;
-    for (let t = 0; t < T; t++) v += f.def[t] < 1 ? 0.3 : f.def[t] > 1 ? -0.3 * f.def[t] : 0;
-    return v + f.off.reduce((a, x) => a + x, 0) * 0.25;
-  };
-  const single = opts.rank ?? defaultSingle;
+  const pool = (opts.pool ?? speciesPool(gen, megas)).filter((s) => !lockedNames.has(s.name) && speciesViolations(rules, s).length === 0);
+  const single = opts.rank ?? ((f: Feat) => defaultRank(f, T));
   const objective = opts.objective ?? ((F: Feat[]) => scoreFeats(F, T, w));
   const cands = pool
     .map((s) => ({ s, f: feat(s) }))
