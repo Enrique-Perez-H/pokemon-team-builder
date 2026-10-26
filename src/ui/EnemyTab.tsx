@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { genId } from '../engine/data';
-import type { Generation, TypeName } from '../engine/data';
+import type { Generation } from '../engine/data';
 import { defenseTable } from '../engine/analysis';
 import { bestAnswers, counterObjective, fighterFromMember, matchupMatrix, topCounters } from '../engine/counter';
 import type { Foe, Matchup } from '../engine/counter';
-import { likelyAttackTypes } from '../engine/moves';
+import { autoMoves } from '../engine/moves';
+import { bestMove, combatant } from '../engine/calc';
+import { suggestBuild } from '../engine/sets';
 import { optimizeTeam } from '../engine/optimize';
 import type { OptimizedTeam } from '../engine/optimize';
 import type { Member } from '../engine/types';
 import type { RuleInstance } from '../engine/rules';
 import { PokemonPicker } from './PokemonPicker';
 import { Sprite, TypeBadge } from './common';
-import { resolveSlots, slotsFromResult, TEAM_SIZE } from './state';
+import { buildFor, resolveSlots, slotsFromResult, TEAM_SIZE } from './state';
 import type { Slot } from './state';
 
 interface Props {
@@ -33,7 +35,8 @@ const fmt = (n: number) => (n > 0 ? `+${n.toFixed(1)}` : n.toFixed(1));
 
 export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, onAddToTeam }: Props) {
   const [picking, setPicking] = useState<number | null>(null);
-  const [threats, setThreats] = useState<Record<string, TypeName[]>>({});
+  const [moves, setMoves] = useState<Record<string, string[]>>({});
+  const [dir, setDir] = useState<'mine' | 'theirs'>('mine');
   const [keep, setKeep] = useState(false);
   const [busy, setBusy] = useState(false);
   const [applying, setApplying] = useState(false);
@@ -49,13 +52,18 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
     let live = true;
     species.forEach((s) => {
       const key = `${genId(gen)}:${s.name}`;
-      if (threats[key]) return;
-      likelyAttackTypes(gen, s).then((t) => live && setThreats((cur) => ({ ...cur, [key]: t })));
+      if (moves[key]) return;
+      autoMoves(gen, s).then((m) => live && setMoves((cur) => ({ ...cur, [key]: m })));
     });
     return () => { live = false; };
   }, [gen, species]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const foes: Foe[] = species.map((s) => ({ species: s, attackTypes: threats[`${genId(gen)}:${s.name}`] ?? [...s.types] }));
+  const foeMoves = (name: string) => moves[`${genId(gen)}:${name}`] ?? [];
+  const typesOf = (names: string[]) => [...new Set(names.flatMap((n) => { const m = gen.moves.get(n); return m ? [m.type] : []; }))];
+  const foes: Foe[] = species.map((s) => {
+    const t = typesOf(foeMoves(s.name));
+    return { species: s, attackTypes: t.length ? t : [...s.types] };
+  });
   const mine = resolveSlots(gen, slots).filter((m): m is Member => !!m);
   const foeTypes = foes.map((f) => [...f.species.types]);
 
@@ -70,8 +78,28 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
 
   const counters = useMemo(
     () => foes.map((f) => topCounters(gen, rules, f, megas, 6)),
-    [gen, rules, megas, species, threats], // eslint-disable-line react-hooks/exhaustive-deps
+    [gen, rules, megas, species, moves], // eslint-disable-line react-hooks/exhaustive-deps
   );
+
+  // Real damage: our chosen moves and builds against standard builds of the enemy's likely moves.
+  const damage = useMemo(() => {
+    if (!foes.length) return null;
+    const n = genId(gen);
+    const mineFull = slots.flatMap((slot) => {
+      const sp = slot && gen.species.get(slot.species);
+      if (!slot || !sp) return [];
+      const mv = slot.moves.flatMap((x) => { const m = gen.moves.get(x); return m ? [m] : []; });
+      return [{ name: sp.name, moves: slot.moves, c: combatant(sp.name, buildFor(gen, slot, sp, mv)) }];
+    });
+    const theirs = foes.map((f) => {
+      const names = foeMoves(f.species.name);
+      const mv = names.flatMap((x) => { const m = gen.moves.get(x); return m ? [m] : []; });
+      return { name: f.species.name, moves: names, c: combatant(f.species.name, suggestBuild(gen, f.species, mv)) };
+    });
+    const mineVsTheirs = mineFull.map((a) => theirs.map((d) => bestMove(n, a.c, d.c, a.moves)));
+    const theirsVsMine = theirs.map((a) => mineFull.map((d) => bestMove(n, a.c, d.c, a.moves)));
+    return { mineFull, theirs, mineVsTheirs, theirsVsMine };
+  }, [gen, slots, foes.length, moves]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const build = () => {
     setBusy(true);
@@ -190,6 +218,42 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
           </section>
         )}
 
+        {damage && damage.mineFull.length > 0 && (
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Damage check</h2>
+              <div className="seg">
+                <button className={dir === 'mine' ? 'on' : ''} onClick={() => setDir('mine')}>Your attacks</button>
+                <button className={dir === 'theirs' ? 'on' : ''} onClick={() => setDir('theirs')}>Their attacks</button>
+              </div>
+            </div>
+            <p className="muted">
+              Best move by real damage, as % of the target's HP.
+              {dir === 'mine' ? ' Uses your moves and builds against standard builds of the enemy.' : " Uses each enemy's likely moves and a standard build against your builds."}
+            </p>
+            <div className="table-wrap">
+              <table className="matrix versus">
+                <thead>
+                  <tr>
+                    <th />
+                    {(dir === 'mine' ? damage.theirs : damage.mineFull).map((x) => <th key={x.name} title={x.name}><Sprite name={x.name} size={36} /></th>)}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(dir === 'mine' ? damage.mineFull : damage.theirs).map((row, i) => (
+                    <tr key={row.name}>
+                      <td className="who"><Sprite name={row.name} size={30} />{row.name}</td>
+                      {(dir === 'mine' ? damage.mineVsTheirs[i] : damage.theirsVsMine[i]).map((b, j) => (
+                        <DamageCell key={j} best={b} mine={dir === 'mine'} empty={!row.moves.length} />
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
         {foes.length > 0 && (
           <section className="panel">
             <h2>Best individual counters</h2>
@@ -269,5 +333,19 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
         />
       )}
     </div>
+  );
+}
+
+function DamageCell({ best, mine, empty }: { best: ReturnType<typeof bestMove>; mine: boolean; empty: boolean }) {
+  if (!best) return <td className="cell even" title={empty ? 'No moves chosen' : 'No damaging move'}>{empty ? 'no moves' : '—'}</td>;
+  const { result: r, move } = best;
+  // Green when it is our damage that is high, red when it is theirs.
+  const level = r.maxPct >= 100 ? 3 : r.maxPct >= 50 ? 2 : r.maxPct >= 25 ? 1 : 0;
+  const cls = level === 0 ? 'even' : mine ? ['', 'win', 'win', 'win2'][level] : ['', 'lose', 'lose', 'lose2'][level];
+  return (
+    <td className={`cell ${cls}`} title={`${move}: ${r.desc}${r.ko ? ` — ${r.ko}` : ''}`}>
+      {Math.round(r.minPct)}–{Math.round(r.maxPct)}%
+      <small className="cell-move">{move}</small>
+    </td>
   );
 }

@@ -1,4 +1,6 @@
 import { STATS, STAT_LABEL, abilitiesOf, bst } from '../engine/data';
+import { computeStats, hasItems, hasNatures } from '../engine/sets';
+import type { Build } from '../engine/sets';
 import type { Generation } from '../engine/data';
 import { memberStats } from '../engine/analysis';
 import type { Member } from '../engine/types';
@@ -11,6 +13,8 @@ interface Props {
   slot: Slot | null;
   member: Member | null;
   issues: string[];
+  build: Build | null;
+  onEditBuild: () => void;
   onChoose: () => void;
   onClear: () => void;
   onAbility: (a: string) => void;
@@ -18,7 +22,7 @@ interface Props {
   onRemoveMove: (moveIndex: number) => void;
 }
 
-export function TeamCard({ gen, index, slot, member, issues, onChoose, onClear, onAbility, onMove, onRemoveMove }: Props) {
+export function TeamCard({ gen, index, slot, member, issues, build, onEditBuild, onChoose, onClear, onAbility, onMove, onRemoveMove }: Props) {
   if (!slot || !member) {
     return (
       <button className="card empty" onClick={onChoose}>
@@ -32,6 +36,7 @@ export function TeamCard({ gen, index, slot, member, issues, onChoose, onClear, 
   const abilities = abilitiesOf(gen, sp);
   const stats = memberStats(member);
   const accent = TYPE_COLORS[sp.types[0]];
+  const real = build ? computeStats(gen, sp, build) : null;
   return (
     <div className={`card${issues.length ? ' has-issues' : ''}`} style={{ borderTopColor: accent }}>
       <div className="card-head">
@@ -70,6 +75,13 @@ export function TeamCard({ gen, index, slot, member, issues, onChoose, onClear, 
         })}
       </div>
 
+      {build && (
+        <button className="build-summary" onClick={onEditBuild} title="Edit level, nature, EVs, IVs and item">
+          <span>{hasNatures(gen) ? build.nature : `Lv ${build.level}`}{hasItems(gen) && build.item ? ` · ${build.item}` : ''}</span>
+          <small className="muted">Edit build ›</small>
+        </button>
+      )}
+
       <div className="stat-bars">
         {STATS.map((k) => {
           const v = sp.baseStats[k];
@@ -77,12 +89,13 @@ export function TeamCard({ gen, index, slot, member, issues, onChoose, onClear, 
             <div key={k} className="stat">
               <span>{STAT_LABEL[k]}</span>
               <div className="bar"><i style={{ width: `${Math.min(100, (v / 200) * 100)}%`, background: v >= 100 ? '#4ecb8d' : v >= 70 ? '#e0c050' : '#e07a5f' }} /></div>
-              <b>{v}</b>
+              <b title={`Base ${v}`}>{real ? real[k] : v}</b>
             </div>
           );
         })}
       </div>
 
+      {real && <small className="muted">Bars show base stats; numbers are real stats at level {build!.level}.</small>}
       {issues.map((m, i) => <div key={i} className="issue">⚠ {m}</div>)}
     </div>
   );

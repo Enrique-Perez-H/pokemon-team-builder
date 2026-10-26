@@ -27,6 +27,12 @@ npm run build
   best learnable moves) to see their shared weaknesses and the types they threaten you with, how your current team
   matches up (1v1 matrix on types, speed and power), the best individual counters for each enemy Pokémon, and a
   **counter team** built by the optimizer that answers every enemy while staying well rounded. Your rules apply.
+- **Real stats and builds**: level, nature, EVs (510 cap), IVs and held item per Pokémon, with live final stats.
+  "Suggest a build" picks a sensible competitive spread. Generations 1–2 use their own fixed-stat rules.
+- **Damage calculator** tab (powered by [`@smogon/calc`](https://github.com/smogon/damage-calc)): any two Pokémon
+  (your team, the enemy team or anyone), with builds, stat boosts, status, weather, terrain, screens and crits. It
+  shows each move's damage range, KO chance and all 16 rolls, in both directions, and has a swap button.
+- The enemy tab's **damage check** shows the real best-move damage between your team and the enemy.
 - The picker shows **suggestions** that patch the team's weaknesses and coverage gaps.
 
 ## Deploy to GitHub Pages / install as an app
@@ -52,4 +58,6 @@ for whole-team limits). The rules panel, picker filtering and validation pick it
 
 ## Roadmap
 
-1. Per-game availability (regional dexes, in-game moves), items, natures/EVs and real stat calculation.
+1. Per-game availability (regional dexes, in-game moves) and game-specific rules.
+2. Use real damage inside the optimizer and counter scoring (today they use type matchups).
+3. Doubles, Tera types, held-item suggestions and set sharing.

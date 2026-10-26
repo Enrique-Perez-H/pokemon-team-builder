@@ -170,3 +170,56 @@ select, input[type=text], input[type=search], input:not([type]), input[type=numb
 .answers .good { color: var(--good); }
 .answers .bad { color: var(--bad); }
 @media (max-width: 700px) { .counter-row { grid-template-columns: 1fr; } .topbar { padding: 10px 14px; } .layout { padding: 14px; } }
+
+.build-summary { display: flex; justify-content: space-between; align-items: center; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; text-align: left; }
+.build-summary:hover { border-color: var(--accent); }
+.build-top { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin-bottom: 10px; }
+.build-top label { display: flex; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; }
+.build-top select, .build-top input { color: var(--text); font-size: 14px; }
+.bad-text { color: var(--bad); }
+.build-table { width: 100%; border-collapse: collapse; margin: 6px 0 12px; }
+.build-table td, .build-table th { padding: 4px 6px; text-align: left; border-top: 1px solid var(--line); font-size: 13px; }
+.build-table th { color: var(--muted); font-weight: 500; font-size: 12px; border-top: 0; }
+.build-table input[type=number] { width: 64px; padding: 3px 6px; }
+.build-table .ev-slider { width: 38%; }
+.build-table .ev-slider input { width: 100%; }
+.nat { color: var(--warn); font-size: 11px; }
+.build-actions { display: flex; justify-content: space-between; }
+
+.calc-wrap { padding: 20px 24px; max-width: 1500px; margin: 0 auto; }
+.calc { display: flex; flex-direction: column; gap: 16px; }
+.calc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .calc-grid { grid-template-columns: 1fr; } }
+.field-bar { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; padding: 12px 16px; }
+.field-bar label { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.side-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.side-head h2 { margin: 0; }
+.side-mon { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+.side-info { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.stat-line { color: var(--muted); font-size: 11px; }
+.boosts { display: grid; grid-template-columns: repeat(auto-fit, minmax(74px, 1fr)); gap: 6px; margin-bottom: 8px; }
+.boosts label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--muted); }
+.boosts select { padding: 3px 4px; color: var(--text); }
+.screens { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 8px; font-size: 13px; }
+.move-chip { display: inline-flex; align-items: center; gap: 2px; background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 12px; }
+.results { display: flex; flex-direction: column; gap: 8px; }
+.result-row { background: var(--panel2); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; text-align: left; display: flex; flex-direction: column; gap: 6px; }
+.result-row.sel { border-color: var(--accent); }
+.result-top { display: flex; gap: 8px; align-items: center; }
+.result-top .mv { font-weight: 600; }
+.dmg-bar { position: relative; height: 10px; border-radius: 5px; background: var(--bg); overflow: hidden; }
+.dmg-bar i { position: absolute; left: 0; top: 0; bottom: 0; }
+.dmg-bar .max { background: #e0a85a; }
+.dmg-bar .min { background: #e0605a; }
+.dmg-text { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; margin-top: 4px; }
+.ko { color: var(--warn); }
+.dmg.err { color: var(--bad); font-size: 12px; }
+.detail { border-top: 1px solid var(--line); padding-top: 8px; font-size: 13px; }
+.detail p { margin: 0 0 6px; }
+
+.panel-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { background: none; border: 0; padding: 5px 12px; color: var(--muted); }
+.seg button.on { background: var(--accent); color: #fff; }
+.cell-move { display: block; font-weight: 400; font-size: 10px; opacity: .8; white-space: nowrap; }
+.versus td.cell { min-width: 84px; font-size: 12px; }

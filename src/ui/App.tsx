@@ -5,18 +5,22 @@ import { suggestPicks } from '../engine/suggest';
 import type { Member } from '../engine/types';
 import { AnalysisPanel } from './AnalysisPanel';
 import { EnemyTab } from './EnemyTab';
+import { BuildEditor } from './BuildEditor';
+import { CalcTab } from './CalcTab';
 import { MovePicker } from './MovePicker';
 import { OptimizerPanel } from './OptimizerPanel';
 import { PokemonPicker } from './PokemonPicker';
 import { RulesPanel } from './RulesPanel';
 import { TeamCard } from './TeamCard';
-import { getGen, resolveSlots, useBuilder } from './state';
+import { suggestBuild } from '../engine/sets';
+import { buildFor, getGen, resolveSlots, useBuilder } from './state';
 import type { Slot } from './state';
 
 export function App() {
   const { state, setState, reset } = useBuilder();
-  const [tab, setTab] = useState<'build' | 'enemy'>('build');
+  const [tab, setTab] = useState<'build' | 'enemy' | 'calc'>('build');
   const [pickSlot, setPickSlot] = useState<number | null>(null);
+  const [buildTarget, setBuildTarget] = useState<number | null>(null);
   const [moveTarget, setMoveTarget] = useState<{ slot: number; index: number } | null>(null);
 
   const gen = getGen(state.gen);
@@ -30,7 +34,15 @@ export function App() {
     setState((st) => ({ ...st, slots: st.slots.map((s, k) => (k === i && s ? fn(s) : s)) }));
 
   const choose = (i: number, species: string) => {
-    setState((st) => ({ ...st, slots: st.slots.map((s, k) => (k === i ? { species, moves: s?.species === species ? s.moves : [] } : s)) }));
+    const sp = gen.species.get(species);
+    setState((st) => ({
+      ...st,
+      slots: st.slots.map((s, k) => {
+        if (k !== i) return s;
+        if (s?.species === species) return s;
+        return { species, moves: [], build: sp ? suggestBuild(gen, sp) : undefined };
+      }),
+    }));
     setPickSlot(null);
   };
 
@@ -48,7 +60,8 @@ export function App() {
     setState((st) => {
       const i = st.slots.findIndex((s) => !s);
       if (i < 0) return st;
-      return { ...st, slots: st.slots.map((s, k) => (k === i ? { species, moves: [] } : s)) };
+      const sp = gen.species.get(species);
+      return { ...st, slots: st.slots.map((s, k) => (k === i ? { species, moves: [], build: sp ? suggestBuild(gen, sp) : undefined } : s)) };
     });
   };
 
@@ -72,6 +85,7 @@ export function App() {
           <button className={tab === 'enemy' ? 'on' : ''} onClick={() => setTab('enemy')}>
             Counter an enemy team{state.enemy.length ? ` (${state.enemy.length})` : ''}
           </button>
+          <button className={tab === 'calc' ? 'on' : ''} onClick={() => setTab('calc')}>Damage calculator</button>
         </nav>
         <div className="controls">
           <label>
@@ -101,6 +115,10 @@ export function App() {
         />
       )}
 
+      {tab === 'calc' && (
+        <div className="calc-wrap"><CalcTab gen={gen} slots={state.slots} enemy={state.enemy} /></div>
+      )}
+
       {tab === 'build' && (
       <main className="layout">
         <div className="main-col">
@@ -112,6 +130,8 @@ export function App() {
                 index={i}
                 slot={slot}
                 member={members[i]}
+                build={slot && members[i] ? buildFor(gen, slot, members[i]!.species, members[i]!.moves) : null}
+                onEditBuild={() => setBuildTarget(i)}
                 issues={violations.filter((v) => v.slots.includes(i)).map((v) => v.message)}
                 onChoose={() => setPickSlot(i)}
                 onClear={() => setState((st) => ({ ...st, slots: st.slots.map((s, k) => (k === i ? null : s)) }))}
@@ -142,6 +162,23 @@ export function App() {
           onClose={() => setPickSlot(null)}
         />
       )}
+      {buildTarget !== null && state.slots[buildTarget] && members[buildTarget] && (() => {
+        const slot = state.slots[buildTarget]!;
+        const m = members[buildTarget]!;
+        return (
+          <BuildEditor
+            gen={gen}
+            species={m.species}
+            build={buildFor(gen, slot, m.species, m.moves)}
+            onChange={(b) => patchSlot(buildTarget, (s) => ({ ...s, build: b, ability: b.ability }))}
+            onSuggest={() => patchSlot(buildTarget, (s) => {
+              const b = suggestBuild(gen, m.species, m.moves, s.ability);
+              return { ...s, build: b };
+            })}
+            onClose={() => setBuildTarget(null)}
+          />
+        );
+      })()}
       {moveTarget && moveSlot && moveSpecies && (
         <MovePicker
           gen={gen}

@@ -210,3 +210,85 @@ describe('counters', () => {
     expect(plain).toHaveLength(4);
   });
 });
+
+import { computeStats, evTotal, itemList, normalizeEvs, suggestBuild, zeroEvs, perfectIvs } from './sets';
+import type { Build } from './sets';
+import { bestMove, calcDamage, NO_BOOSTS, NO_FIELD } from './calc';
+import type { Combatant } from './calc';
+
+describe('real stats', () => {
+  const garchomp = gen.species.get('Garchomp')!;
+  const build = (over: Partial<Build> = {}): Build => ({ level: 100, nature: 'Adamant', evs: { ...zeroEvs(), atk: 252, spe: 252, hp: 4 }, ivs: perfectIvs(), ...over });
+  it('matches known competitive stats', () => {
+    const s = computeStats(gen, garchomp, build());
+    expect(s).toMatchObject({ hp: 358, atk: 394, spe: 303 });
+    expect(computeStats(gen, garchomp, build({ level: 50 })).hp).toBe(184);
+  });
+  it('applies natures and gives Shedinja 1 HP', () => {
+    expect(computeStats(gen, garchomp, build({ nature: 'Modest' })).atk).toBeLessThan(394);
+    expect(computeStats(gen, gen.species.get('Shedinja') ?? getGen(ALL_GENS).species.get('Shedinja')!, build()).hp).toBe(1);
+  });
+  it('uses max stat experience in Gen 1', () => {
+    const g1 = getGen(1);
+    expect(computeStats(g1, g1.species.get('Alakazam')!, { ...build(), nature: 'Hardy' }).spa).toBe(368);
+  });
+  it('normalizes EVs to the 510 cap', () => {
+    const e = normalizeEvs({ ...zeroEvs(), atk: 252, spe: 252, hp: 252 }, 'hp');
+    expect(evTotal(e)).toBeLessThanOrEqual(510);
+    expect(e.hp % 4).toBe(0);
+    expect(normalizeEvs({ ...zeroEvs(), atk: 999, def: 3 }).atk).toBe(252);
+  });
+  it('suggests builds that suit the role', () => {
+    const fast = suggestBuild(gen, garchomp);
+    expect(['Jolly', 'Adamant']).toContain(fast.nature);
+    expect(fast.evs.atk).toBe(252);
+    expect(evTotal(fast.evs)).toBeLessThanOrEqual(510);
+    const wall = suggestBuild(gen, gen.species.get('Clodsire')!);
+    expect(wall.evs.hp).toBe(252);
+    expect(wall.item).toBe('Leftovers');
+    expect(suggestBuild(getGen(1), getGen(1).species.get('Alakazam')!).item).toBeUndefined();
+    expect(itemList(gen)).toContain('Life Orb');
+    expect(itemList(getGen(1))).toEqual([]);
+  });
+});
+
+describe('damage calculator', () => {
+  const side = (species: string, build: Build): Combatant => ({ species, build, boosts: NO_BOOSTS(), status: '' });
+  const att = side('Garchomp', { ...suggestBuild(gen, gen.species.get('Garchomp')!), nature: 'Adamant', item: 'Life Orb', ability: 'Rough Skin' });
+  const skarm = side('Skarmory', { ...suggestBuild(gen, gen.species.get('Skarmory') ?? getGen(ALL_GENS).species.get('Skarmory')!), nature: 'Impish', ability: 'Sturdy', item: 'Leftovers' });
+  it('computes ranges and percentages', () => {
+    const r = calcDamage(9, att, skarm, 'Stone Edge');
+    expect(r.ok).toBe(true);
+    expect(r.max).toBeGreaterThan(r.min);
+    expect(r.maxPct).toBeCloseTo((r.max / r.defenderHp) * 100, 5);
+    expect(r.desc).toContain('Garchomp Stone Edge vs.');
+    expect(r.rolls).toHaveLength(16);
+  });
+  it('handles immunities, status moves and unknown moves without throwing', () => {
+    expect(calcDamage(9, att, side('Corviknight', skarm.build), 'Earthquake').ko).toBe('No effect');
+    expect(calcDamage(9, att, skarm, 'Swords Dance').status).toBe(true);
+    const bad = calcDamage(9, att, skarm, 'Totally Fake Move');
+    expect(bad.ok).toBe(false);
+    expect(bad.error).toBeTruthy();
+  });
+  it('responds to items, boosts and field', () => {
+    const base = calcDamage(9, att, skarm, 'Stone Edge').max;
+    const noItem = calcDamage(9, { ...att, build: { ...att.build, item: undefined } }, skarm, 'Stone Edge').max;
+    expect(base).toBeGreaterThan(noItem);
+    const boosted = calcDamage(9, { ...att, boosts: { ...NO_BOOSTS(), atk: 2 } }, skarm, 'Stone Edge').max;
+    expect(boosted).toBeGreaterThan(base);
+    const screens = calcDamage(9, att, skarm, 'Stone Edge', { ...NO_FIELD, reflect: true }).max;
+    expect(screens).toBeLessThan(base);
+    const crit = calcDamage(9, att, skarm, 'Stone Edge', { ...NO_FIELD, crit: true }).max;
+    expect(crit).toBeGreaterThan(base);
+  });
+  it('picks the strongest move and works across every generation', () => {
+    const best = bestMove(9, att, skarm, ['Earthquake', 'Stone Edge', 'Outrage']);
+    expect(best?.move).toBeTruthy();
+    expect(calcDamage(ALL_GENS, side('Pidgeot', suggestBuild(gen, getGen(ALL_GENS).species.get('Pidgeot')!)), skarm, 'Hurricane').ok).toBe(true);
+    const g4 = getGen(4);
+    expect(calcDamage(4, side('Salamence', suggestBuild(g4, g4.species.get('Salamence')!)), side('Skarmory', suggestBuild(g4, g4.species.get('Skarmory')!)), 'Outrage').ok).toBe(true);
+    const g1 = getGen(1);
+    expect(calcDamage(1, side('Alakazam', suggestBuild(g1, g1.species.get('Alakazam')!)), side('Chansey', suggestBuild(g1, g1.species.get('Chansey')!)), 'Psychic').ok).toBe(true);
+  });
+});

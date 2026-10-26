@@ -3,6 +3,9 @@ import { getGen } from '../engine/data';
 import type { Generation, TypeName } from '../engine/data';
 import { autoMoves } from '../engine/moves';
 import type { OptimizedTeam } from '../engine/optimize';
+import { suggestBuild } from '../engine/sets';
+import type { Build } from '../engine/sets';
+import type { Move, Specie } from '../engine/data';
 import type { Member } from '../engine/types';
 import { newRule } from '../engine/rules';
 import type { RuleInstance } from '../engine/rules';
@@ -11,6 +14,8 @@ export interface Slot {
   species: string;
   ability?: string;
   moves: string[];
+  /** Level, nature, EVs, IVs and item. Missing means "use the suggested competitive build". */
+  build?: Build;
 }
 
 export interface BuilderState {
@@ -89,7 +94,16 @@ export async function slotsFromResult(
     team.slots.map(async (sp, i): Promise<Slot> => {
       const old = kept[i];
       if (old && old.species === sp.name) return old;
-      return { species: sp.name, ability: team.abilities[i], moves: await autoMoves(gen, sp, foes) };
+      const moves = await autoMoves(gen, sp, foes);
+      const ability = team.abilities[i];
+      const mv = moves.flatMap((n) => { const m = gen.moves.get(n); return m ? [m] : []; });
+      return { species: sp.name, ability, moves, build: suggestBuild(gen, sp, mv, ability) };
     }),
   );
+}
+
+/** The build to use for a slot: its saved one, or a suggested default for its species and moves. */
+export function buildFor(gen: Generation, slot: Slot, species: Specie, moves: Move[]): Build {
+  const base = slot.build ?? suggestBuild(gen, species, moves);
+  return { ...base, ability: slot.ability ?? base.ability };
 }
