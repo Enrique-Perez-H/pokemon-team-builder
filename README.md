@@ -17,8 +17,16 @@ npm run build
 - **Weaknesses & resistances** matrix for the whole team, including defensive abilities (Levitate, Flash Fire, Thick Fat…).
 - **Type coverage**: which defending types your chosen moves hit super effectively (STAB is assumed until moves are picked).
 - **Stats**: base stats per member, team averages, role labels, plus plain-language insights.
-- **Rules**: composable rules (generation of origin, allowed/banned types, max per type, no legendaries,
-  fully-evolved only, BST range…). Rules filter the picker and flag violations on the team.
+- **Rules**: one-click toggles (no legendaries, no restricted legends, no mythicals, no Paradox, no Ultra Beasts,
+  fully evolved, all-different types…), presets (Competitive OU/UU, Little Cup, Mono-type, Kanto only, in-game
+  playthrough…) and composable rules: generation of origin, allowed/banned types, max per type, Smogon tier limit,
+  banned Pokémon, Little Cup, stat ranges, BST range and more. Rules filter the picker, the optimizer and the
+  suggestions, and flag violations on the team.
+- **Team tools**: Showdown import/export, share links (the whole team and rules in the URL), saved teams in the
+  browser, a team name, slot locks (the optimizer keeps locked Pokémon), drag-and-drop or arrow reordering, and a
+  light/dark theme.
+- **Team report**: defense and offense type counts, speed, physical/special balance, uncovered weaknesses, and a
+  Stats tab with real stats and speed order.
 - **Team optimizer**: searches the Pokémon your rules allow for the best team (beam search + swap polishing,
   ~0.3 s), balancing defense, type coverage and stats with adjustable weights. It can keep Pokémon you already
   picked, suggests abilities (e.g. Levitate, Water Absorb) and auto-selects four attacking moves per Pokémon.

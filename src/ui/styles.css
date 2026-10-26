@@ -223,3 +223,59 @@ select, input[type=text], input[type=search], input:not([type]), input[type=numb
 .seg button.on { background: var(--accent); color: #fff; }
 .cell-move { display: block; font-weight: 400; font-size: 10px; opacity: .8; white-space: nowrap; }
 .versus td.cell { min-width: 84px; font-size: 12px; }
+
+.quick-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.chip.quick { padding: 4px 11px; font-size: 12px; }
+.preset-select { max-width: 150px; font-size: 12px; padding: 4px 8px; }
+.rule input:not([type=checkbox]):not([type=number]) { width: 100%; }
+
+.card-actions { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.icon-btn.lock { font-size: 14px; }
+.icon-btn.lock.on { background: var(--line); }
+.shift { display: flex; }
+.shift .icon-btn:disabled { opacity: .25; cursor: default; }
+.slot-wrap { display: flex; }
+.slot-wrap > .card { flex: 1; min-width: 0; }
+.slot-wrap.over > .card { outline: 2px dashed var(--accent); }
+.slot-wrap[draggable=true] { cursor: grab; }
+.toast { background: var(--panel2); border: 1px solid var(--accent); border-radius: 8px; padding: 6px 12px; font-size: 13px; }
+.save-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.save-row input { flex: 1; }
+.saved-team { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.saved-info { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.saved-mons { display: flex; gap: 2px; }
+.io-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 800px) { .io-grid { grid-template-columns: 1fr; } }
+.io-grid h3 { margin-bottom: 4px; }
+.io-grid textarea { width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 8px; color: var(--text); font: 12px/1.4 ui-monospace, Menlo, monospace; margin-bottom: 8px; resize: vertical; }
+
+.lock-line { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.topbar { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 24px 0; }
+.top-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
+.top-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.team-name { flex: 1; min-width: 140px; max-width: 280px; }
+.nav-tabs button { padding-bottom: 10px; }
+
+.report { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin-bottom: 14px; }
+.tile { background: var(--panel2); border: 1px solid var(--line); border-left: 3px solid var(--muted); border-radius: 10px; padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; }
+.tile b { font-size: 20px; }
+.tile.good { border-left-color: var(--good); }
+.tile.warn { border-left-color: var(--warn); }
+.tile.bad { border-left-color: var(--bad); }
+.tile.wide { grid-column: 1 / -1; border-left-color: var(--line); }
+.sub { margin: 16px 0 6px; font-size: 13px; }
+.speed-list { display: grid; gap: 4px; margin-bottom: 10px; }
+.speed-row { display: grid; grid-template-columns: 180px 1fr 44px; gap: 10px; align-items: center; }
+.speed-row .who { display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; }
+.speed-row b { text-align: right; }
+
+:root[data-theme=light] {
+  --bg: #f2f4f9; --panel: #ffffff; --panel2: #eef1f7; --line: #d5dae6; --text: #1b2130;
+  --muted: #5c6478; --accent: #3b6cf0; --good: #1f9d63; --warn: #b7851a; --bad: #d1443d;
+  color-scheme: light;
+}
+:root[data-theme=light] .cell.m0 { background: #b9e6ea; color: #0b4a50; }
+:root[data-theme=light] .cell.mres, :root[data-theme=light] .cell.win, :root[data-theme=light] .cell.win2 { background: #bfe8cf; color: #14532f; }
+:root[data-theme=light] .cell.mweak, :root[data-theme=light] .cell.lose { background: #f3cbbd; color: #7a2a14; }
+:root[data-theme=light] .cell.mweak2, :root[data-theme=light] .cell.lose2 { background: #ef9b94; color: #5c0f0a; }
+:root[data-theme=light] .sprite-btn, :root[data-theme=light] .enemy-card { background: var(--panel2); }

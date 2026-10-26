@@ -136,3 +136,44 @@ export function insights(gen: Generation, team: Member[]): Insight[] {
   if (!out.some((i) => i.level !== 'good')) out.push({ level: 'good', text: 'No glaring weaknesses found.' });
   return out;
 }
+
+// ---------- Team report ----------
+
+export interface TeamReport {
+  typeCount: number;
+  /** Types where resistances and immunities at least match the weaknesses. */
+  defenseSafe: number;
+  /** Types the team can hit super effectively. */
+  offenseHit: number;
+  /** Members with base Speed of 95 or more. */
+  fast: number;
+  avgSpeed: number;
+  physical: number;
+  special: number;
+  mixed: number;
+  /** Weaknesses shared by two or more members that resistances do not offset, worst first. */
+  sharedWeak: { type: TypeName; weak: number; cover: number }[];
+}
+
+export function teamReport(gen: Generation, team: Member[]): TeamReport {
+  const def = defenseTable(gen, team);
+  const cov = coverageTable(gen, team);
+  const side = (m: Member) => {
+    const b = m.species.baseStats;
+    return b.atk > b.spa + 15 ? 'p' : b.spa > b.atk + 15 ? 's' : 'm';
+  };
+  return {
+    typeCount: def.length,
+    defenseSafe: def.filter((r) => r.weak <= r.resist + r.immune).length,
+    offenseHit: cov.filter((r) => r.best > 1).length,
+    fast: team.filter((m) => m.species.baseStats.spe >= 95).length,
+    avgSpeed: team.length ? Math.round(team.reduce((a, m) => a + m.species.baseStats.spe, 0) / team.length) : 0,
+    physical: team.filter((m) => side(m) === 'p').length,
+    special: team.filter((m) => side(m) === 's').length,
+    mixed: team.filter((m) => side(m) === 'm').length,
+    sharedWeak: def
+      .filter((r) => r.weak >= 2 && r.weak > r.resist + r.immune)
+      .map((r) => ({ type: r.type, weak: r.weak, cover: r.resist + r.immune }))
+      .sort((a, b) => b.weak - b.cover - (a.weak - a.cover)),
+  };
+}

@@ -134,7 +134,7 @@ describe('autoMoves', () => {
   });
 });
 
-import { ALL_GENS, genId } from './data';
+import { ALL_GENS, genId, isLegendary } from './data';
 
 describe('every generation', () => {
   const all = getGen(ALL_GENS);
@@ -290,5 +290,145 @@ describe('damage calculator', () => {
     expect(calcDamage(4, side('Salamence', suggestBuild(g4, g4.species.get('Salamence')!)), side('Skarmory', suggestBuild(g4, g4.species.get('Skarmory')!)), 'Outrage').ok).toBe(true);
     const g1 = getGen(1);
     expect(calcDamage(1, side('Alakazam', suggestBuild(g1, g1.species.get('Alakazam')!)), side('Chansey', suggestBuild(g1, g1.species.get('Chansey')!)), 'Psychic').ok).toBe(true);
+  });
+});
+
+import { PRESETS, QUICK_RULES, hasQuick, speciesViolations, toggleQuick } from './rules';
+
+describe('more rules', () => {
+  const sp = (n: string) => getGen(ALL_GENS).species.get(n)!;
+  const rule = (type: string, params: Record<string, unknown> = {}) => { const r = newRule(type); Object.assign(r.params, params); return r; };
+  it('bans each legendary class independently', () => {
+    expect(speciesViolations([rule('no_restricted')], sp('Mewtwo'))).toHaveLength(1);
+    expect(speciesViolations([rule('no_restricted')], sp('Articuno'))).toHaveLength(0);
+    expect(speciesViolations([rule('no_mythicals')], sp('Mew'))).toHaveLength(1);
+    expect(speciesViolations([rule('no_mythicals')], sp('Mewtwo'))).toHaveLength(0);
+    expect(speciesViolations([rule('no_legendaries')], sp('Articuno'))).toHaveLength(1);
+    expect(speciesViolations([rule('no_paradox')], sp('Flutter Mane'))).toHaveLength(1);
+    expect(speciesViolations([rule('no_paradox')], sp('Garchomp'))).toHaveLength(0);
+    expect(speciesViolations([rule('no_ultra_beasts')], sp('Kartana'))).toHaveLength(1);
+  });
+  it('limits by tier, evolution stage, stats and name', () => {
+    expect(speciesViolations([rule('tier_limit', { max: 'OU' })], sp('Zacian'))).toHaveLength(1);
+    expect(speciesViolations([rule('tier_limit', { max: 'OU' })], sp('Dragonite'))).toHaveLength(0);
+    expect(speciesViolations([rule('tier_limit', { max: 'OU' })], sp('Pidgeot'))).toHaveLength(0); // unlisted tiers pass
+    expect(speciesViolations([rule('little_cup')], sp('Charmander'))).toHaveLength(0);
+    expect(speciesViolations([rule('little_cup')], sp('Charizard'))).toHaveLength(1);
+    expect(speciesViolations([rule('little_cup')], sp('Pichu'))).toHaveLength(0);
+    expect(speciesViolations([rule('not_fully_evolved')], sp('Charmeleon'))).toHaveLength(0);
+    expect(speciesViolations([rule('not_fully_evolved')], sp('Charizard'))).toHaveLength(1);
+    expect(speciesViolations([rule('stat_range', { stat: 'spe', min: 0, max: 100 })], sp('Garchomp'))).toHaveLength(1); // 102
+    expect(speciesViolations([rule('stat_range', { stat: 'spe', min: 0, max: 100 })], sp('Corviknight'))).toHaveLength(0);
+    expect(speciesViolations([rule('banned_pokemon', { names: ['Charizard'] })], sp('Charizard'))).toHaveLength(1);
+    expect(speciesViolations([rule('banned_pokemon', { names: ['Charizard'] })], sp('Charizard-Mega-X'))).toHaveLength(1);
+  });
+  it('toggles quick options and swaps per-type limits', () => {
+    const no = QUICK_RULES.find((q) => q.type === 'no_legendaries')!;
+    let rules = toggleQuick([], no);
+    expect(hasQuick(rules, no)).toBe(true);
+    expect(toggleQuick(rules, no)).toEqual([]);
+    const one = QUICK_RULES.find((q) => q.params?.max === 1)!;
+    const two = QUICK_RULES.find((q) => q.params?.max === 2)!;
+    rules = toggleQuick(toggleQuick(rules, one), two);
+    expect(rules.filter((r) => r.type === 'max_per_type')).toHaveLength(1);
+    expect(hasQuick(rules, two)).toBe(true);
+    expect(hasQuick(rules, one)).toBe(false);
+  });
+  it('presets build legal teams the optimizer can satisfy', () => {
+    for (const p of PRESETS) {
+      const rules = p.build();
+      expect(rules.length).toBeGreaterThan(0);
+      const res = optimizeTeam({ gen: getGen(ALL_GENS), rules, locked: Array(6).fill(null), megas: false });
+      expect(res.length, p.id).toBeGreaterThan(0);
+      expect(validateTeam(rules, res[0].slots), p.id).toEqual([]);
+    }
+  });
+});
+
+describe('optimizer enforces team-wide rules', () => {
+  const all = getGen(ALL_GENS);
+  const rule = (type: string, params: Record<string, unknown> = {}) => { const r = newRule(type); Object.assign(r.params, params); return r; };
+  const run = (rules: ReturnType<typeof newRule>[], g = all) => optimizeTeam({ gen: g, rules, locked: Array(6).fill(null), megas: false });
+  it('never returns duplicate species', () => {
+    const rules = [rule('species_clause')];
+    for (const r of run(rules)) expect(validateTeam(rules, r.slots)).toEqual([]);
+  });
+  it('respects max per type and max legendaries', () => {
+    const rules = [rule('species_clause'), rule('max_per_type', { max: 1 })];
+    const res = run(rules, gen);
+    expect(res.length).toBeGreaterThan(0);
+    for (const r of res) {
+      expect(validateTeam(rules, r.slots)).toEqual([]);
+      const all18 = r.slots.flatMap((s) => s.types);
+      expect(new Set(all18).size).toBe(all18.length);
+    }
+    const leg = [rule('species_clause'), rule('max_legendaries', { max: 1 })];
+    for (const r of run(leg)) expect(r.slots.filter(isLegendary).length).toBeLessThanOrEqual(1);
+  });
+  it('applies tier limits to past-generation Pokémon', () => {
+    const rules = [rule('species_clause'), rule('tier_limit', { max: 'OU' })];
+    const names = run(rules)[0].slots.map((s) => s.name);
+    expect(names).not.toContain('Yveltal');
+    expect(speciesViolations(rules, all.species.get('Yveltal')!)).toHaveLength(1);
+    expect(speciesViolations(rules, all.species.get('Pidgeot')!)).toHaveLength(0);
+  });
+});
+
+import { exportTeam, importTeam } from './showdown';
+import type { Slot } from './team';
+
+describe('showdown format', () => {
+  const garchomp: Slot = {
+    species: 'Garchomp', ability: 'Rough Skin', moves: ['Earthquake', 'Outrage', 'Swords Dance', 'Stone Edge'],
+    build: { level: 100, nature: 'Jolly', item: 'Life Orb', evs: { ...zeroEvs(), atk: 252, spe: 252, hp: 4 }, ivs: perfectIvs() },
+  };
+  const build = (s: Slot) => s.build!;
+  it('round-trips a team', () => {
+    const text = exportTeam(gen, [garchomp, null, { species: 'Skarmory', moves: ['Brave Bird'], build: { ...garchomp.build!, nature: 'Impish', item: 'Leftovers', ivs: { ...perfectIvs(), spe: 0 }, level: 50 } }], build);
+    expect(text).toContain('Garchomp @ Life Orb');
+    expect(text).toContain('EVs: 4 HP / 252 Atk / 252 Spe');
+    expect(text).toContain('Jolly Nature');
+    expect(text).toContain('Level: 50');
+    expect(text).toContain('IVs: 0 Spe');
+    const back = importTeam(gen, text);
+    expect(back.warnings).toEqual([]);
+    expect(back.slots).toHaveLength(2);
+    expect(back.slots[0]).toMatchObject({ species: 'Garchomp', ability: 'Rough Skin', moves: garchomp.moves });
+    expect(back.slots[0].build).toMatchObject({ nature: 'Jolly', item: 'Life Orb', level: 100, evs: garchomp.build!.evs });
+    expect(back.slots[1].build).toMatchObject({ level: 50, nature: 'Impish', item: 'Leftovers' });
+    expect(back.slots[1].build!.ivs.spe).toBe(0);
+  });
+  it('reads pasted Showdown teams with nicknames and reports problems', () => {
+    const paste = `Landy (Landorus-Therian) (M) @ Choice Scarf\nAbility: Intimidate\nEVs: 252 Atk / 4 SpD / 252 Spe\nJolly Nature\n- Earthquake\n- U-turn\n- Not A Move\n\nMissingno @ Leftovers\n- Tackle`;
+    const r = importTeam(getGen(ALL_GENS), paste);
+    expect(r.slots).toHaveLength(1);
+    expect(r.slots[0].species).toBe('Landorus-Therian');
+    expect(r.slots[0].moves).toEqual(['Earthquake', 'U-turn']);
+    expect(r.slots[0].build?.item).toBe('Choice Scarf');
+    expect(r.warnings.join(' ')).toMatch(/Not A Move/);
+    expect(r.warnings.join(' ')).toMatch(/Missingno/);
+  });
+  it('limits to six Pokémon and omits gen-specific fields for old gens', () => {
+    const six = Array.from({ length: 8 }, () => 'Pikachu\n- Thunderbolt').join('\n\n');
+    expect(importTeam(gen, six).slots).toHaveLength(6);
+    const g1 = getGen(1);
+    const out = exportTeam(g1, [{ species: 'Alakazam', moves: ['Psychic'], build: suggestBuild(g1, g1.species.get('Alakazam')!) }], build);
+    expect(out).not.toMatch(/Nature|EVs|Ability|@/);
+  });
+});
+
+import { teamReport } from './analysis';
+
+describe('team report', () => {
+  const mk = (names: string[]) => names.map((n) => ({ species: gen.species.get(n)!, moves: [] as never[] }));
+  it('summarises coverage and only lists uncovered shared weaknesses', () => {
+    const rock = teamReport(gen, mk(['Charizard', 'Talonflame', 'Corviknight']));
+    expect(rock.typeCount).toBe(18);
+    const weakRock = rock.sharedWeak.find((w) => w.type === 'Rock');
+    expect(weakRock).toBeTruthy(); // Charizard and Talonflame are weak, Corviknight resists nothing
+    expect(rock.sharedWeak.every((w) => w.weak > w.cover && w.weak >= 2)).toBe(true);
+    const r = teamReport(gen, mk(['Garchomp', 'Gengar']));
+    expect(r.physical + r.special + r.mixed).toBe(2);
+    expect(r.fast).toBe(2);
   });
 });

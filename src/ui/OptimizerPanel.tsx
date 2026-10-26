@@ -13,6 +13,7 @@ interface Props {
   rules: RuleInstance[];
   slots: (Slot | null)[];
   onApply: (slots: (Slot | null)[]) => void;
+  onLockAll: (locked: boolean) => void;
 }
 
 const LABELS: Record<keyof Weights, string> = {
@@ -21,15 +22,22 @@ const LABELS: Record<keyof Weights, string> = {
   stats: 'Raw stats',
 };
 
-export function OptimizerPanel({ gen, megas, rules, slots, onApply }: Props) {
+const WEIGHT_PRESETS: { label: string; w: Weights }[] = [
+  { label: 'Balanced', w: { defense: 1, offense: 1, stats: 1 } },
+  { label: 'Hard-hitting', w: { defense: 0.5, offense: 2, stats: 1 } },
+  { label: 'Defensive', w: { defense: 2, offense: 0.5, stats: 1 } },
+  { label: 'Raw power', w: { defense: 0.5, offense: 0.5, stats: 3 } },
+];
+
+export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll }: Props) {
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
-  const [keep, setKeep] = useState(true);
   const [results, setResults] = useState<OptimizedTeam[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [applying, setApplying] = useState(false);
 
-  const kept = slots.filter(Boolean).length;
-  const lockedSlots = keep ? slots : slots.map(() => null);
+  const filled = slots.filter(Boolean).length;
+  const kept = slots.filter((s) => s?.locked).length;
+  const lockedSlots = slots.map((s) => (s?.locked ? s : null));
 
   const run = () => {
     setBusy(true);
@@ -56,6 +64,11 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply }: Props) {
         Searches every Pokémon allowed by your rules for the team with the best defensive profile,
         type coverage and stats, then picks abilities and attacking moves.
       </p>
+      <div className="chip-row">
+        {WEIGHT_PRESETS.map((p) => (
+          <button key={p.label} className={`chip${JSON.stringify(p.w) === JSON.stringify(weights) ? ' on' : ''}`} onClick={() => setWeights(p.w)}>{p.label}</button>
+        ))}
+      </div>
       <div className="weights">
         {(Object.keys(LABELS) as (keyof Weights)[]).map((k) => (
           <label key={k}>
@@ -66,12 +79,19 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply }: Props) {
         ))}
       </div>
       <div className="opt-actions">
-        <label className="check">
-          <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
-          Keep the {kept} Pokémon already on my team
-        </label>
+        <div className="lock-line">
+          <small className="muted">
+            {kept ? `${kept} locked 🔒 Pokémon will be kept.` : 'Lock 🔒 a Pokémon on its card to keep it; everything else is rebuilt.'}
+          </small>
+          {filled > 0 && (
+            <span>
+              <button className="chip" onClick={() => onLockAll(true)}>Lock all</button>{' '}
+              <button className="chip" onClick={() => onLockAll(false)}>Unlock all</button>
+            </span>
+          )}
+        </div>
         <button className="btn primary" disabled={busy || applying} onClick={run}>
-          {busy ? 'Searching…' : kept && keep ? 'Fill remaining slots' : 'Build best team'}
+          {busy ? 'Searching…' : kept ? 'Fill the other slots' : 'Build best team'}
         </button>
       </div>
       {results && results.length === 0 && (

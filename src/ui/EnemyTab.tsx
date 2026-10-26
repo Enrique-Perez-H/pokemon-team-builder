@@ -26,6 +26,7 @@ interface Props {
   /** Replace the player's team and switch back to the builder. */
   onApply: (slots: Slot[]) => void;
   onAddToTeam: (species: string) => void;
+  onLockAll: (locked: boolean) => void;
 }
 
 const cellClass = (m: Matchup) =>
@@ -33,11 +34,10 @@ const cellClass = (m: Matchup) =>
 
 const fmt = (n: number) => (n > 0 ? `+${n.toFixed(1)}` : n.toFixed(1));
 
-export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, onAddToTeam }: Props) {
+export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, onAddToTeam, onLockAll }: Props) {
   const [picking, setPicking] = useState<number | null>(null);
   const [moves, setMoves] = useState<Record<string, string[]>>({});
   const [dir, setDir] = useState<'mine' | 'theirs'>('mine');
-  const [keep, setKeep] = useState(false);
   const [busy, setBusy] = useState(false);
   const [applying, setApplying] = useState(false);
   const [results, setResults] = useState<OptimizedTeam[] | null>(null);
@@ -105,7 +105,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
     setBusy(true);
     setResults(null);
     setTimeout(() => {
-      const locked = (keep ? slots : slots.map(() => null)).map((s) => (s ? gen.species.get(s.species) ?? null : null));
+      const locked = slots.map((s) => (s?.locked ? gen.species.get(s.species) ?? null : null));
       const { objective, rank } = counterObjective(gen, foes);
       setResults(optimizeTeam({ gen, rules, locked, megas, objective, rank }));
       setBusy(false);
@@ -114,7 +114,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
 
   const apply = async (team: OptimizedTeam) => {
     setApplying(true);
-    onApply(await slotsFromResult(gen, team, keep ? slots : slots.map(() => null), foeTypes));
+    onApply(await slotsFromResult(gen, team, slots.map((s) => (s?.locked ? s : null)), foeTypes));
     setApplying(false);
   };
 
@@ -280,10 +280,17 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
           <h2>Counter team</h2>
           <p className="muted">Builds the team of six that best answers every enemy Pokémon while staying well rounded, using your rules.</p>
           <div className="opt-actions">
-            <label className="check">
-              <input type="checkbox" checked={keep} onChange={(e) => setKeep(e.target.checked)} />
-              Keep the {slots.filter(Boolean).length} Pokémon already on my team
-            </label>
+            <div className="lock-line">
+              <small className="muted">
+                {slots.some((x) => x?.locked) ? `${slots.filter((x) => x?.locked).length} locked 🔒 Pokémon will be kept.` : 'Lock 🔒 Pokémon on the builder tab to keep them.'}
+              </small>
+              {slots.some(Boolean) && (
+                <span>
+                  <button className="chip" onClick={() => onLockAll(true)}>Lock all</button>{' '}
+                  <button className="chip" onClick={() => onLockAll(false)}>Unlock all</button>
+                </span>
+              )}
+            </div>
             <button className="btn primary" disabled={!foes.length || busy || applying} onClick={build}>
               {busy ? 'Searching…' : foes.length ? 'Build counter team' : 'Add enemy Pokémon first'}
             </button>

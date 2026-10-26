@@ -16,13 +16,16 @@ interface Props {
   build: Build | null;
   onEditBuild: () => void;
   onChoose: () => void;
+  onToggleLock: () => void;
+  onShift: (dir: -1 | 1) => void;
+  canShift: { left: boolean; right: boolean };
   onClear: () => void;
   onAbility: (a: string) => void;
   onMove: (moveIndex: number) => void;
   onRemoveMove: (moveIndex: number) => void;
 }
 
-export function TeamCard({ gen, index, slot, member, issues, build, onEditBuild, onChoose, onClear, onAbility, onMove, onRemoveMove }: Props) {
+export function TeamCard({ gen, index, slot, member, issues, build, onEditBuild, onChoose, onToggleLock, onShift, canShift, onClear, onAbility, onMove, onRemoveMove }: Props) {
   if (!slot || !member) {
     return (
       <button className="card empty" onClick={onChoose}>
@@ -48,7 +51,16 @@ export function TeamCard({ gen, index, slot, member, issues, build, onEditBuild,
           <div className="badges">{sp.types.map((t) => <TypeBadge key={t} type={t} />)}</div>
           <small className="muted">{stats.role} · BST {bst(sp)}</small>
         </div>
-        <button className="icon-btn" onClick={onClear} aria-label="Remove">✕</button>
+        <div className="card-actions">
+          <button className="icon-btn" onClick={onClear} aria-label="Remove">✕</button>
+          <button className={`icon-btn lock${slot.locked ? ' on' : ''}`} onClick={onToggleLock} aria-pressed={!!slot.locked} title={slot.locked ? 'Locked: the optimizer keeps this Pokémon' : 'Lock so the optimizer keeps this Pokémon'}>
+            {slot.locked ? '🔒' : '🔓'}
+          </button>
+          <div className="shift">
+            <button className="icon-btn tiny" disabled={!canShift.left} onClick={() => onShift(-1)} aria-label="Move earlier">‹</button>
+            <button className="icon-btn tiny" disabled={!canShift.right} onClick={() => onShift(1)} aria-label="Move later">›</button>
+          </div>
+        </div>
       </div>
 
       {abilities.length > 0 && (

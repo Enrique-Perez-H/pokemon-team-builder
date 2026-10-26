@@ -12,8 +12,9 @@ import { OptimizerPanel } from './OptimizerPanel';
 import { PokemonPicker } from './PokemonPicker';
 import { RulesPanel } from './RulesPanel';
 import { TeamCard } from './TeamCard';
-import { suggestBuild } from '../engine/sets';
-import { buildFor, getGen, resolveSlots, useBuilder } from './state';
+import { TeamMenu } from './TeamMenu';
+import { computeStats, suggestBuild } from '../engine/sets';
+import { buildFor, getGen, resolveSlots, useBuilder, useTheme } from './state';
 import type { Slot } from './state';
 
 export function App() {
@@ -22,11 +23,15 @@ export function App() {
   const [pickSlot, setPickSlot] = useState<number | null>(null);
   const [buildTarget, setBuildTarget] = useState<number | null>(null);
   const [moveTarget, setMoveTarget] = useState<{ slot: number; index: number } | null>(null);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
 
+  const [theme, toggleTheme] = useTheme();
   const gen = getGen(state.gen);
   const members = useMemo(() => resolveSlots(gen, state.slots), [gen, state.slots]);
   const speciesSlots = members.map((m) => m?.species ?? null);
   const team = members.filter((m): m is Member => !!m);
+  const realStats = members.flatMap((m, i) => (m && state.slots[i] ? [computeStats(gen, m.species, buildFor(gen, state.slots[i]!, m.species, m.moves))] : []));
   const violations = useMemo(() => validateTeam(state.rules, speciesSlots), [state.rules, members]); // eslint-disable-line react-hooks/exhaustive-deps
   const violatedRules = new Set(violations.map((v) => v.ruleId));
 
@@ -45,6 +50,17 @@ export function App() {
     }));
     setPickSlot(null);
   };
+
+  const swapSlots = (a: number, b: number) =>
+    setState((st) => {
+      if (a === b) return st;
+      const slots = [...st.slots];
+      [slots[a], slots[b]] = [slots[b], slots[a]];
+      return { ...st, slots };
+    });
+
+  const setLocks = (locked: boolean) =>
+    setState((st) => ({ ...st, slots: st.slots.map((s) => (s ? { ...s, locked } : s)) }));
 
   const setGen = (n: number) =>
     setState((st) => ({
@@ -79,26 +95,38 @@ export function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <h1>Pokémon Team Builder</h1>
-        <nav className="nav-tabs">
-          <button className={tab === 'build' ? 'on' : ''} onClick={() => setTab('build')}>Team builder</button>
-          <button className={tab === 'enemy' ? 'on' : ''} onClick={() => setTab('enemy')}>
-            Counter an enemy team{state.enemy.length ? ` (${state.enemy.length})` : ''}
-          </button>
-          <button className={tab === 'calc' ? 'on' : ''} onClick={() => setTab('calc')}>Damage calculator</button>
-        </nav>
-        <div className="controls">
-          <label>
-            Game
-            <select value={state.gen} onChange={(e) => setGen(Number(e.target.value))}>
-              {GAMES.map((g) => <option key={g.gen} value={g.gen}>{g.gen === ALL_GENS ? g.label : `Gen ${g.gen} — ${g.label}`}</option>)}
-            </select>
-          </label>
-          <label className="check">
-            <input type="checkbox" checked={state.megas} onChange={(e) => setState((st) => ({ ...st, megas: e.target.checked }))} />
-            Allow Mega forms
-          </label>
-          <button className="btn" onClick={reset}>New team</button>
+        <div className="top-row">
+          <h1>Pokémon Team Builder</h1>
+          <input
+            className="team-name" placeholder="Team name" value={state.name} aria-label="Team name"
+            onChange={(e) => setState((st) => ({ ...st, name: e.target.value }))}
+          />
+          <div className="top-actions">
+            <TeamMenu gen={gen} state={state} setState={setState} />
+            <button className="btn" onClick={reset}>New team</button>
+            <button className="btn" onClick={toggleTheme} aria-label="Toggle light or dark theme" title="Toggle light/dark theme">{theme === 'light' ? '🌙' : '☀️'}</button>
+          </div>
+        </div>
+        <div className="top-row">
+          <nav className="nav-tabs">
+            <button className={tab === 'build' ? 'on' : ''} onClick={() => setTab('build')}>Team builder</button>
+            <button className={tab === 'enemy' ? 'on' : ''} onClick={() => setTab('enemy')}>
+              Counter an enemy team{state.enemy.length ? ` (${state.enemy.length})` : ''}
+            </button>
+            <button className={tab === 'calc' ? 'on' : ''} onClick={() => setTab('calc')}>Damage calculator</button>
+          </nav>
+          <div className="controls">
+            <label>
+              Game
+              <select value={state.gen} onChange={(e) => setGen(Number(e.target.value))}>
+                {GAMES.map((g) => <option key={g.gen} value={g.gen}>{g.gen === ALL_GENS ? g.label : `Gen ${g.gen} — ${g.label}`}</option>)}
+              </select>
+            </label>
+            <label className="check">
+              <input type="checkbox" checked={state.megas} onChange={(e) => setState((st) => ({ ...st, megas: e.target.checked }))} />
+              Allow Mega forms
+            </label>
+          </div>
         </div>
       </header>
 
@@ -112,6 +140,7 @@ export function App() {
           onEnemy={(enemy) => setState((st) => ({ ...st, enemy }))}
           onApply={(slots) => { setState((st) => ({ ...st, slots })); setTab('build'); }}
           onAddToTeam={addToTeam}
+          onLockAll={setLocks}
         />
       )}
 
@@ -124,28 +153,41 @@ export function App() {
         <div className="main-col">
           <div className="team-grid">
             {state.slots.map((slot, i) => (
-              <TeamCard
+              <div
                 key={i}
-                gen={gen}
-                index={i}
-                slot={slot}
-                member={members[i]}
-                build={slot && members[i] ? buildFor(gen, slot, members[i]!.species, members[i]!.moves) : null}
-                onEditBuild={() => setBuildTarget(i)}
-                issues={violations.filter((v) => v.slots.includes(i)).map((v) => v.message)}
-                onChoose={() => setPickSlot(i)}
-                onClear={() => setState((st) => ({ ...st, slots: st.slots.map((s, k) => (k === i ? null : s)) }))}
-                onAbility={(a) => patchSlot(i, (s) => ({ ...s, ability: a || undefined }))}
-                onMove={(idx) => setMoveTarget({ slot: i, index: idx })}
-                onRemoveMove={(idx) => patchSlot(i, (s) => ({ ...s, moves: s.moves.filter((_, k) => k !== idx) }))}
-              />
+                className={`slot-wrap${dragOver === i && dragFrom !== null && dragFrom !== i ? ' over' : ''}`}
+                draggable={!!slot}
+                onDragStart={() => setDragFrom(i)}
+                onDragOver={(e) => { if (dragFrom !== null) { e.preventDefault(); setDragOver(i); } }}
+                onDragLeave={() => setDragOver((o) => (o === i ? null : o))}
+                onDrop={() => { if (dragFrom !== null) swapSlots(dragFrom, i); setDragFrom(null); setDragOver(null); }}
+                onDragEnd={() => { setDragFrom(null); setDragOver(null); }}
+              >
+                <TeamCard
+                  gen={gen}
+                  index={i}
+                  slot={slot}
+                  member={members[i]}
+                  build={slot && members[i] ? buildFor(gen, slot, members[i]!.species, members[i]!.moves) : null}
+                  onEditBuild={() => setBuildTarget(i)}
+                  issues={violations.filter((v) => v.slots.includes(i)).map((v) => v.message)}
+                  onChoose={() => setPickSlot(i)}
+                  onClear={() => setState((st) => ({ ...st, slots: st.slots.map((s, k) => (k === i ? null : s)) }))}
+                  onAbility={(a) => patchSlot(i, (s) => ({ ...s, ability: a || undefined }))}
+                  onMove={(idx) => setMoveTarget({ slot: i, index: idx })}
+                  onRemoveMove={(idx) => patchSlot(i, (s) => ({ ...s, moves: s.moves.filter((_, k) => k !== idx) }))}
+                  onToggleLock={() => patchSlot(i, (s) => ({ ...s, locked: !s.locked }))}
+                  onShift={(dir) => swapSlots(i, i + dir)}
+                  canShift={{ left: i > 0, right: i < state.slots.length - 1 }}
+                />
+              </div>
             ))}
           </div>
-          <AnalysisPanel gen={gen} team={team} />
+          <AnalysisPanel gen={gen} team={team} real={realStats} />
         </div>
         <aside className="side-col">
           <RulesPanel gen={gen} rules={state.rules} violated={violatedRules} onChange={(rules) => setState((st) => ({ ...st, rules }))} />
-          <OptimizerPanel gen={gen} megas={state.megas} rules={state.rules} slots={state.slots} onApply={(slots) => setState((st) => ({ ...st, slots }))} />
+          <OptimizerPanel gen={gen} megas={state.megas} rules={state.rules} slots={state.slots} onApply={(slots) => setState((st) => ({ ...st, slots }))} onLockAll={setLocks} />
         </aside>
       </main>
       )}

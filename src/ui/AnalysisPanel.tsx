@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { STATS, STAT_LABEL } from '../engine/data';
-import type { Generation } from '../engine/data';
-import { coverageTable, defenseTable, insights, memberStats, teamAverages } from '../engine/analysis';
+import type { Generation, StatKey } from '../engine/data';
+import { coverageTable, defenseTable, insights, memberStats, teamAverages, teamReport } from '../engine/analysis';
 import type { Member } from '../engine/types';
 import { Sprite, TypeBadge, TYPE_COLORS } from './common';
 
@@ -71,33 +71,81 @@ function Offense({ gen, team }: { gen: Generation; team: Member[] }) {
   );
 }
 
-function Stats({ team }: { team: Member[] }) {
-  const avg = teamAverages(team);
+function Stats({ team, real }: { team: Member[]; real?: Record<StatKey, number>[] }) {
+  const base = teamAverages(team);
+  const shown = (m: Member, i: number, k: StatKey) => (real?.[i] ? real[i][k] : m.species.baseStats[k]);
+  const avg = (k: StatKey) => team.reduce((a, m, i) => a + shown(m, i, k), 0) / team.length;
+  const max = (k: StatKey) => Math.max(1, ...team.map((m, i) => shown(m, i, k)));
+  const order = team.map((m, i) => ({ m, speed: shown(m, i, 'spe') })).sort((a, b) => b.speed - a.speed);
+  const fastest = order[0]?.speed || 1;
   return (
     <>
+      <p className="muted">{real ? 'Real stats from each Pokémon’s level, nature, EVs and IVs.' : 'Base stats.'} Colours compare members within each stat.</p>
       <div className="stat-table">
-        <div className="stat-head"><span /> {STATS.map((s) => <b key={s}>{STAT_LABEL[s]}</b>)}<b>BST</b></div>
+        <div className="stat-head"><span /> {STATS.map((s) => <b key={s}>{STAT_LABEL[s]}</b>)}<b>{real ? 'Total' : 'BST'}</b></div>
         {team.map((m, i) => (
           <div key={i} className="stat-row">
             <span className="who"><Sprite name={m.species.name} size={28} types={m.species.types} />{m.species.name}</span>
             {STATS.map((s) => {
-              const v = m.species.baseStats[s];
-              return <span key={s} className="sv" style={{ background: `hsl(${Math.min(140, v)} 55% 30% / ${0.25 + Math.min(1, v / 150) * 0.6})` }}>{v}</span>;
+              const v = shown(m, i, s);
+              const t = v / max(s);
+              return <span key={s} className="sv" style={{ background: `hsl(${Math.round(t * 130)} 55% 30% / ${0.25 + t * 0.55})` }}>{v}</span>;
             })}
-            <span className="sv">{memberStats(m).bst}</span>
+            <span className="sv">{STATS.reduce((a, s) => a + shown(m, i, s), 0)}</span>
           </div>
         ))}
         <div className="stat-row avg">
           <span className="who">Team average</span>
-          {STATS.map((s) => <span key={s} className="sv">{Math.round(avg[s])}</span>)}
-          <span className="sv">{Math.round(STATS.reduce((a, s) => a + avg[s], 0))}</span>
+          {STATS.map((s) => <span key={s} className="sv">{Math.round(real ? avg(s) : base[s])}</span>)}
+          <span className="sv">{Math.round(STATS.reduce((a, s) => a + (real ? avg(s) : base[s]), 0))}</span>
         </div>
       </div>
+      <h3 className="sub">Speed order</h3>
+      <div className="speed-list">
+        {order.map(({ m, speed }, i) => (
+          <div key={i} className="speed-row">
+            <span className="who"><Sprite name={m.species.name} size={24} types={m.species.types} />{m.species.name}</span>
+            <div className="bar"><i style={{ width: `${(speed / fastest) * 100}%`, background: 'var(--accent)' }} /></div>
+            <b>{speed}</b>
+          </div>
+        ))}
+      </div>
+      <small className="muted">Per-member role: {team.map((m) => `${m.species.name} — ${memberStats(m).role}`).join(' · ')}</small>
     </>
   );
 }
 
-export function AnalysisPanel({ gen, team }: { gen: Generation; team: Member[] }) {
+function Report({ gen, team }: { gen: Generation; team: Member[] }) {
+  const r = teamReport(gen, team);
+  const tile = (label: string, value: string, sub: string, level: 'good' | 'warn' | 'bad') => (
+    <div className={`tile ${level}`}>
+      <small className="muted">{label}</small>
+      <b>{value}</b>
+      <small className="muted">{sub}</small>
+    </div>
+  );
+  const lvl = (x: number, n: number) => (x >= n * 0.85 ? 'good' : x >= n * 0.65 ? 'warn' : 'bad') as 'good' | 'warn' | 'bad';
+  return (
+    <div className="report">
+      {tile('Defense', `${r.defenseSafe}/${r.typeCount}`, 'types you handle', lvl(r.defenseSafe, r.typeCount))}
+      {tile('Offense', `${r.offenseHit}/${r.typeCount}`, 'types you hit super effectively', lvl(r.offenseHit, r.typeCount))}
+      {tile('Speed', `${r.fast}`, `fast members · avg base ${r.avgSpeed}`, team.length >= 4 && r.fast === 0 ? 'bad' : r.fast >= 2 ? 'good' : 'warn')}
+      {tile('Balance', `${r.physical}P / ${r.special}S`, `${r.mixed} mixed`, team.length >= 4 && (r.physical === 0 || r.special === 0) ? 'warn' : 'good')}
+      {r.sharedWeak.length > 0 && (
+        <div className="tile wide">
+          <small className="muted">Weaknesses your team does not cover</small>
+          <div className="chip-row">
+            {r.sharedWeak.slice(0, 6).map((w) => (
+              <span key={w.type} className="tagged"><TypeBadge type={w.type} small /> {w.weak} weak · {w.cover} resist</span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function AnalysisPanel({ gen, team, real }: { gen: Generation; team: Member[]; real?: Record<StatKey, number>[] }) {
   const [tab, setTab] = useState<Tab>('defense');
   const notes = insights(gen, team);
   return (
@@ -113,9 +161,10 @@ export function AnalysisPanel({ gen, team }: { gen: Generation; team: Member[] }
         <p className="muted">Add Pokémon to see the analysis.</p>
       ) : (
         <>
+          <Report gen={gen} team={team} />
           {tab === 'defense' && <Defense gen={gen} team={team} />}
           {tab === 'offense' && <Offense gen={gen} team={team} />}
-          {tab === 'stats' && <Stats team={team} />}
+          {tab === 'stats' && <Stats team={team} real={real} />}
           <div className="insights">
             {notes.map((n, i) => <div key={i} className={`insight ${n.level}`}>{n.level === 'good' ? '✓' : '!'} {n.text}</div>)}
           </div>
