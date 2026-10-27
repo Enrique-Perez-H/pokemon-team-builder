@@ -236,6 +236,7 @@ export function App() {
           onApply={(slots) => { setState((st) => ({ ...st, slots })); setTab('build'); }}
           onAddToTeam={addToTeam}
           onLockAll={setLocks}
+          onRules={(rules) => setState((st) => ({ ...st, rules }))}
         />
       )}
 
@@ -296,7 +297,7 @@ export function App() {
         </div>
         <aside className="side-col">
           <RulesPanel gen={gen} rules={state.rules} violated={violatedRules} onChange={(rules) => setState((st) => ({ ...st, rules }))} />
-          <OptimizerPanel gen={gen} megas={state.megas} rules={state.rules} slots={state.slots} format={format} onApply={(slots) => setState((st) => ({ ...st, slots }))} onLockAll={setLocks} />
+          <OptimizerPanel gen={gen} megas={state.megas} rules={state.rules} slots={state.slots} format={format} onApply={(slots) => setState((st) => ({ ...st, slots }))} onLockAll={setLocks} onRules={(rules) => setState((st) => ({ ...st, rules }))} />
         </aside>
       </main>
       )}

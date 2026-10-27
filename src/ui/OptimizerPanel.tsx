@@ -5,6 +5,7 @@ import { optimizeBalanced, optimizeVsFoes, pickThreats } from '../engine/search'
 import type { OptimizedTeam, Weights } from '../engine/optimize';
 import type { RuleInstance } from '../engine/rules';
 import { Sprite } from './common';
+import { QuickRules } from './QuickRules';
 import type { Format } from '../engine/roles';
 import { slotsFromResult } from './state';
 import type { Slot } from './state';
@@ -16,6 +17,7 @@ interface Props {
   slots: (Slot | null)[];
   onApply: (slots: (Slot | null)[]) => void;
   onLockAll: (locked: boolean) => void;
+  onRules: (rules: RuleInstance[]) => void;
   format: Format;
 }
 
@@ -34,7 +36,7 @@ const WEIGHT_PRESETS: { label: string; w: Weights }[] = [
   { label: 'Raw power', w: { defense: 0.5, offense: 0.5, stats: 3, roles: 0 } },
 ];
 
-export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll, format }: Props) {
+export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll, onRules, format }: Props) {
   const [weights, setWeights] = useState<Weights>(DEFAULT_WEIGHTS);
   const [results, setResults] = useState<OptimizedTeam[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -82,6 +84,7 @@ export function OptimizerPanel({ gen, megas, rules, slots, onApply, onLockAll, f
         Searches every Pokémon allowed by your rules for the team with the best defensive profile,
         type coverage and stats, then picks abilities and movesets (attacks plus hazards, recovery, pivots and setup).
       </p>
+      <QuickRules rules={rules} onChange={onRules} label="Which Pokémon can be used?" />
       <div className="chip-row">
         {WEIGHT_PRESETS.map((p) => (
           <button key={p.label} className={`chip${JSON.stringify(p.w) === JSON.stringify(weights) ? ' on' : ''}`} onClick={() => setWeights(p.w)}>{p.label}</button>

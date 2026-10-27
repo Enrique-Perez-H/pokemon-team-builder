@@ -17,6 +17,7 @@ import type { OptimizedTeam } from '../engine/optimize';
 import type { Member } from '../engine/types';
 import type { RuleInstance } from '../engine/rules';
 import { PokemonPicker } from './PokemonPicker';
+import { QuickRules } from './QuickRules';
 import { Sprite, TypeBadge } from './common';
 import { buildFor, resolveSlots, slotsFromResult, TEAM_SIZE } from './state';
 import type { Slot } from './state';
@@ -32,6 +33,7 @@ interface Props {
   onApply: (slots: Slot[]) => void;
   onAddToTeam: (species: string) => void;
   onLockAll: (locked: boolean) => void;
+  onRules: (rules: RuleInstance[]) => void;
   format: Format;
 }
 
@@ -45,7 +47,7 @@ const pct = (x: number) => (x >= 100 ? '100%+' : `${Math.round(x)}%`);
 
 const fmt = (n: number) => (n > 0 ? `+${n.toFixed(1)}` : n.toFixed(1));
 
-export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, onAddToTeam, onLockAll, format }: Props) {
+export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, onAddToTeam, onLockAll, onRules, format }: Props) {
   const [picking, setPicking] = useState<number | null>(null);
   const [foeSets, setFoeSets] = useState<FoeSet[]>([]);
   const [calcOk, setCalcOk] = useState(calcReady());
@@ -356,6 +358,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
         <section className="panel optimizer">
           <h2>Counter team</h2>
           <p className="muted">Builds the team of six that best answers every enemy Pokémon while staying well rounded, using your rules.</p>
+          <QuickRules rules={rules} onChange={onRules} label="Which Pokémon can be used?" />
           <div className="opt-actions">
             <div className="lock-line">
               <small className="muted">

@@ -363,3 +363,7 @@ select, input[type=text], input[type=search], input:not([type]), input[type=numb
   .side-mon { flex-wrap: wrap; }
   .toast { position: fixed; left: 14px; right: 14px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 30; text-align: center; }
 }
+
+.quick-rules { display: flex; flex-direction: column; gap: 6px; margin: 10px 0; }
+.quick-label { font-size: 13px; }
+.quick-rules .quick-grid { margin-bottom: 0; }

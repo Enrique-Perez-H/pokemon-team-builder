@@ -1,10 +1,11 @@
 import { useMemo, useState } from 'react';
-import { PRESETS, QUICK_RULES, RULE_DEFS, hasQuick, newRule, ruleDef, toggleQuick } from '../engine/rules';
+import { PRESETS, RULE_DEFS, newRule, ruleDef } from '../engine/rules';
 import type { ParamDef, RuleInstance } from '../engine/rules';
 import { speciesPool, typesIn } from '../engine/data';
 import { GAME_BY_ID } from '../engine/games';
 import type { Generation, TypeName } from '../engine/data';
 import { TypeFilter } from './common';
+import { QuickRules } from './QuickRules';
 
 interface Props {
   gen: Generation;
@@ -93,13 +94,7 @@ export function RulesPanel({ gen, rules, violated, onChange }: Props) {
         </select>
       </div>
 
-      <div className="quick-grid">
-        {QUICK_RULES.map((q) => (
-          <button key={q.label} className={`chip quick${hasQuick(rules, q) ? ' on' : ''}`} title={q.hint} onClick={() => onChange(toggleQuick(rules, q))}>
-            {q.label}
-          </button>
-        ))}
-      </div>
+      <QuickRules rules={rules} onChange={onChange} />
 
       {active.length === 0 && <p className="muted">No rules — anything goes.</p>}
       {active.map((r) => {

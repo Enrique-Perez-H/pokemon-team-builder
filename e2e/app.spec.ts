@@ -18,8 +18,8 @@ test.describe('team builder', () => {
 
   test('rules hide banned Pokémon and flag violations', async ({ page }) => {
     await openApp(page);
-    await page.locator('.quick', { hasText: 'No legendaries' }).click();
-    await page.locator('.quick', { hasText: 'No Paradox' }).click();
+    await page.locator('.optimizer .quick', { hasText: 'No legendaries' }).click();
+    await page.locator('.optimizer .quick', { hasText: 'No Paradox' }).click();
     await page.locator('.card.empty').first().click();
     await page.fill('.picker-controls input', 'Mewtwo');
     await expect(page.locator('.pick:not(.blocked)')).toHaveCount(0);
@@ -36,10 +36,29 @@ test.describe('team builder', () => {
     await expect(page.locator('.issue')).toContainText('Ground type is banned');
   });
 
+  test('"No legendaries" is offered right beside the build button and excludes them', async ({ page }) => {
+    await openApp(page);
+    const chip = page.locator('.optimizer .quick', { hasText: 'No legendaries' });
+    await expect(chip).toBeVisible();
+    await expect(chip).toHaveAttribute('aria-pressed', 'false');
+    await chip.click();
+    await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    // it is the same rule the Rules panel shows
+    await expect(page.locator('.rule strong', { hasText: 'No legendaries' })).toBeVisible();
+    await buildTeam(page);
+    const legendary = ['Mewtwo', 'Zacian', 'Zamazenta', 'Miraidon', 'Koraidon', 'Eternatus', 'Arceus', 'Kyogre', 'Groudon', 'Rayquaza', 'Lugia', 'Ho-Oh', 'Mew', 'Lunala', 'Solgaleo'];
+    const names = await teamNames(page);
+    expect(names.filter((n) => legendary.some((l) => n.startsWith(l)))).toEqual([]);
+    await expect(page.locator('.issue')).toHaveCount(0);
+    await chip.click(); // and it can be turned off again
+    await expect(chip).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.rule strong', { hasText: 'No legendaries' })).toHaveCount(0);
+  });
+
   test('the optimizer builds a legal team with full sets and covered roles', async ({ page }) => {
     await openApp(page);
-    await page.locator('.quick', { hasText: 'No legendaries' }).click();
-    await page.locator('.quick', { hasText: 'No Paradox' }).click();
+    await page.locator('.optimizer .quick', { hasText: 'No legendaries' }).click();
+    await page.locator('.optimizer .quick', { hasText: 'No Paradox' }).click();
     await buildTeam(page);
     await expect(page.locator('.card:not(.empty)')).toHaveCount(6);
     await expect(page.locator('.issue')).toHaveCount(0);
@@ -191,8 +210,11 @@ test.describe('damage calculator', () => {
 test.describe('enemy team', () => {
   test('builds a counter team and shows real-damage counters', async ({ page }) => {
     await openApp(page);
-    await page.locator('.quick', { hasText: 'No legendaries' }).click();
+    await page.locator('.optimizer .quick', { hasText: 'No legendaries' }).click();
     await page.locator('.nav-tabs button', { hasText: 'Counter an enemy team' }).click();
+    // the same toggles are offered next to the counter-team button, and reflect the rule chosen above
+    await expect(page.locator('.optimizer .quick', { hasText: 'No legendaries' })).toHaveAttribute('aria-pressed', 'true');
+    await page.locator('.optimizer .quick', { hasText: 'No Paradox' }).click();
     for (const n of ['Charizard', 'Garchomp', 'Gyarados']) {
       await page.locator('.enemy-card.empty').first().click();
       await page.fill('.picker-controls input', n);

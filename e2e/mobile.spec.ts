@@ -52,7 +52,7 @@ async function expectComfortable(page: Page, where: string) {
 test.describe('on a phone', () => {
   test('the builder fits the screen and the optimizer is reachable', async ({ page }) => {
     await openApp(page);
-    await page.locator('.quick', { hasText: 'No legendaries' }).tap();
+    await page.locator('.optimizer .quick', { hasText: 'No legendaries' }).tap();
     // The header must not cover the screen (it used to be sticky and over 300px tall).
     const header = await page.locator('.topbar').evaluate((el) => ({ pos: getComputedStyle(el).position, h: el.getBoundingClientRect().height }));
     expect(header.pos).not.toBe('sticky');
@@ -65,6 +65,17 @@ test.describe('on a phone', () => {
     });
     expect(order.team).toBeLessThan(order.opt);
     expect(order.opt).toBeLessThan(order.analysis);
+  });
+
+  test('the legendary toggle sits on screen next to the build button', async ({ page }) => {
+    await openApp(page);
+    const build = page.locator('.optimizer .btn.primary');
+    await build.scrollIntoViewIfNeeded();
+    const chip = page.locator('.optimizer .quick', { hasText: 'No legendaries' });
+    await expect(chip).toBeInViewport();
+    await expect(build).toBeInViewport();
+    await chip.tap();
+    await expect(chip).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('modals are usable bottom sheets', async ({ page }) => {
