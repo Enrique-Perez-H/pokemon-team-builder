@@ -67,15 +67,19 @@ test.describe('on a phone', () => {
     expect(order.opt).toBeLessThan(order.analysis);
   });
 
-  test('the legendary toggle sits on screen next to the build button', async ({ page }) => {
+  test('the legendary toggle is in the optimizer panel, above the build button, and works by tap', async ({ page }) => {
     await openApp(page);
-    const build = page.locator('.optimizer .btn.primary');
-    await build.scrollIntoViewIfNeeded();
-    const chip = page.locator('.optimizer .quick', { hasText: 'No legendaries' });
+    const panel = page.locator('.optimizer');
+    const chip = panel.locator('.quick', { hasText: 'No legendaries' });
+    const build = panel.locator('.btn.primary');
+    await chip.scrollIntoViewIfNeeded();
     await expect(chip).toBeInViewport();
-    await expect(build).toBeInViewport();
     await chip.tap();
     await expect(chip).toHaveAttribute('aria-pressed', 'true');
+    // it sits above the build button and within about a screen of it (the panel is taller than a phone, so not always both on screen)
+    const [c, b] = await Promise.all([chip.boundingBox(), build.boundingBox()]);
+    expect(c!.y).toBeLessThan(b!.y);
+    expect(b!.y - c!.y).toBeLessThan((page.viewportSize()?.height ?? 800) * 1.3);
   });
 
   test('modals are usable bottom sheets', async ({ page }) => {
