@@ -72,9 +72,9 @@ Browser tests need a Chromium: `npm run e2e:install` once (CI does this itself).
   Pokémon, edit its level, add or remove moves. For your own team it fills moves, nature, item, ability, level and EVs;
   for the enemy it stores a *known set* that the damage tables, counters and counter-team search use instead of guesses.
   Pokémon missing from the selected game can be loaded by switching to "Every generation".
-- **Radical Red** (the unofficial FireRed hack) is in the game list: Gen 8 rules, Pokémon up to Gen 8 including Megas and
-  the Alolan and Galarian forms. Its learnsets and custom trainer teams are not included, so moves come from the Gen 8 data
-  and no trainers can be loaded.
+- **Radical Red** (the unofficial FireRed hack) is in the game list: Pokémon up to Gen 9 (no Tera), Megas and regional
+  forms. Its gym leaders, Elite Four and Champion teams (Normal mode, Radical Red 4.1) load from "🏆 Load a trainer" with
+  their real EVs, natures, items and moves. Its custom learnsets are not included, so moves come from the Gen 9 data.
 - **Gym leaders, Elite Four, Champions and Kahunas** for every main-series game from Red/Blue to Scarlet/Violet: on the
   enemy tab, "🏆 Load a trainer" lists them in the order they are fought and loads the team with their real levels,
   abilities, held items, Tera types and moves, so the counters and damage tables use what they actually do. Repeat
@@ -105,7 +105,11 @@ words, unit-tested against a real OCR capture in `src/engine/__fixtures__`); `sr
 (text available under [CC BY-NC-SA 2.5](https://creativecommons.org/licenses/by-nc-sa/2.5/)). `scripts/fetch-trainer-pages.mjs <cache dir>`
 downloads the pages once (politely, one request per second) and `scripts/build-trainer-data.mjs <cache dir> public/data/trainers`
 turns the `{{Party}}` and `{{Pokémon}}` templates into JSON using `scripts/trainer-parser.mjs`. Battle-facility and side-series
-teams are left out. The data is committed, so neither script runs during a normal build.
+teams are left out.
+
+Radical Red teams (`public/data/trainers/radical-red.json`) come from the boss pages of [Radical Red Tracker](https://radicalredtracker.com/bosses) via
+`scripts/build-radical-red-trainers.mjs` (the Radical Red wiki blocks automated access). Where a level is "highest level"
+minus a few, the fight's level cap stands in for the highest level. The data is committed, so neither script runs during a normal build.
 
 ## Game data
 

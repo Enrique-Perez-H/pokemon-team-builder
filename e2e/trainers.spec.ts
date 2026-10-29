@@ -19,7 +19,7 @@ test.describe('gym leaders and the Elite Four', () => {
     await page.locator('.nav-tabs button', { hasText: 'Counter an enemy team' }).click();
     await page.getByRole('button', { name: /Load a trainer/ }).click();
     const games = await page.getByLabel('Game', { exact: true }).locator('option').evaluateAll((o) => o.map((x) => (x as HTMLOptionElement).value));
-    for (const id of games.filter((g) => !g.startsWith('legends') && g !== 'radical-red')) {
+    for (const id of games.filter((g) => !g.startsWith('legends'))) {
       await page.getByLabel('Game', { exact: true }).selectOption(id);
       await expect(page.locator('.trainer-card').first()).toBeVisible();
     }
@@ -28,13 +28,18 @@ test.describe('gym leaders and the Elite Four', () => {
     await expect(page.locator('.enemy-card:not(.empty)')).toHaveCount(6);
   });
 
-  test('Radical Red is a selectable game with Gen 8 Pokémon and Megas but nothing newer', async ({ page }) => {
+  test('Radical Red has Pokémon up to Gen 9 and its own gym leaders and Elite Four', async ({ page }) => {
     await openApp(page);
     await page.locator('.controls select').selectOption('game:radical-red');
     await page.locator('.card.empty').first().click();
-    await page.fill('.picker-controls input', 'Sprigatito');
-    await expect(page.locator('.pick:not(.blocked)')).toHaveCount(0);
-    await page.fill('.picker-controls input', 'Corviknight');
-    await expect(page.locator('.pick:not(.blocked) strong').first()).toHaveText(/^Corviknight/);
+    await page.fill('.picker-controls input', 'Great Tusk');
+    await expect(page.locator('.pick:not(.blocked) strong').first()).toHaveText(/^Great Tusk/);
+    await page.getByRole('button', { name: 'Close' }).first().click();
+    await page.locator('.nav-tabs button', { hasText: 'Counter an enemy team' }).click();
+    await page.getByRole('button', { name: /Load a trainer/ }).click();
+    await expect(page.getByLabel('Game', { exact: true })).toHaveValue('radical-red');
+    await page.getByRole('button', { name: /^Brock, Pewter City/ }).click();
+    await expect(page.locator('.enemy-card:not(.empty)')).toHaveCount(4);
+    await expect(page.locator('.enemy-card', { hasText: 'Geodude-Alola' })).toBeVisible();
   });
 });

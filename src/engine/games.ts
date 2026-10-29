@@ -32,7 +32,7 @@ export const GAME_LIST: GameInfo[] = [
   { id: 'brilliant-diamond-shining-pearl', label: 'Brilliant Diamond / Shining Pearl', gen: 8, megas: false },
   { id: 'legends-arceus', label: 'Legends: Arceus', gen: 8, megas: false },
   { id: 'scarlet-violet', label: 'Scarlet / Violet (+ DLC)', gen: 9, megas: false },
-  { id: 'radical-red', label: 'Radical Red (FireRed hack, unofficial)', gen: 8, megas: true },
+  { id: 'radical-red', label: 'Radical Red (FireRed hack, unofficial)', gen: 9, megas: true },
   { id: 'legends-za', label: 'Legends: Z-A (+ DLC)', gen: 9, megas: true },
 ];
 
@@ -97,7 +97,7 @@ const REGIONAL_FORMS: [RegExp, string[]][] = [
   [/^Alola/, ['sun-moon', 'ultra-sun-ultra-moon', 'lets-go', 'radical-red']],
   [/^Galar/, ['sword-shield', 'radical-red']],
   [/^Hisui/, ['legends-arceus', 'scarlet-violet', 'legends-za']],
-  [/^Paldea/, ['scarlet-violet']],
+  [/^Paldea/, ['scarlet-violet', 'radical-red']],
 ];
 
 /**
