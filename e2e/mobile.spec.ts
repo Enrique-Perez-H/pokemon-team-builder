@@ -2,10 +2,14 @@ import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { addPokemon, buildTeam, openApp } from './helpers';
 
-/** What spills past the right edge of the screen (ignoring anything inside a horizontally scrolling box). */
+/**
+ * What spills past the right edge of the screen (ignoring anything inside a horizontally scrolling box).
+ * Measured against the real screen width: when content is wider than the screen, a phone silently widens
+ * `innerWidth` to fit it, which would make every comparison against `innerWidth` pass.
+ */
 async function overflow(page: Page) {
   return page.evaluate(() => {
-    const vw = window.innerWidth;
+    const vw = Math.min(window.innerWidth, window.visualViewport?.width ?? window.innerWidth, window.screen.width);
     const scrolls = (el: Element) => {
       for (let e = el.parentElement; e; e = e.parentElement) {
         const o = getComputedStyle(e).overflowX;
@@ -80,6 +84,16 @@ test.describe('on a phone', () => {
     const [c, b] = await Promise.all([chip.boundingBox(), build.boundingBox()]);
     expect(c!.y).toBeLessThan(b!.y);
     expect(b!.y - c!.y).toBeLessThan((page.viewportSize()?.height ?? 800) * 1.3);
+  });
+
+  test('the screenshot dialog fits the screen, before and after reading a picture', async ({ page }) => {
+    await openApp(page);
+    await page.getByRole('button', { name: /From screenshot/ }).tap();
+    await expect(page.locator('.dropzone')).toBeVisible();
+    await expectComfortable(page, 'screenshot dialog');
+    await page.setInputFiles('input[aria-label="Team screenshot"]', 'e2e/fixtures/gym-leader-team.png');
+    await expect(page.locator('.review-row')).toHaveCount(6, { timeout: 90_000 });
+    await expectComfortable(page, 'screenshot review');
   });
 
   test('modals are usable bottom sheets', async ({ page }) => {

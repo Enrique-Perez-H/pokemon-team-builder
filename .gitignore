@@ -3,3 +3,5 @@ dist
 *.tsbuildinfo
 playwright-report
 test-results
+# OCR engine files, copied from node_modules by scripts/copy-ocr-assets.mjs
+public/ocr

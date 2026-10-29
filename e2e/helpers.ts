@@ -12,6 +12,8 @@ export async function openApp(page: Page, path = '/') {
 export async function addPokemon(page: Page, name: string) {
   await page.locator('.card.empty').first().click();
   await page.fill('.picker-controls input', name);
+  // Wait for the list to finish filtering to the searched name before picking, as a person would.
+  await expect(page.locator('.pick:not(.blocked) strong').first()).toHaveText(new RegExp(`^${name}`));
   await page.locator('.pick:not(.blocked)').first().click();
 }
 

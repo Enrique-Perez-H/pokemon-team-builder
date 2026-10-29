@@ -5,6 +5,7 @@ import type { Combatant, FieldOptions } from './calc';
 import { autoMoves } from './moves';
 import { makeFeat } from './optimize';
 import { computeStats, suggestBuild } from './sets';
+import type { Build } from './sets';
 import type { Matchup } from './counter';
 import { topCounters } from './counter';
 import type { Foe } from './counter';
@@ -19,14 +20,31 @@ export interface FoeSet {
   moves: string[];
   combatant: Combatant;
   speed: number;
+  /** True when the set came from a screenshot or the user rather than being guessed. */
+  known?: boolean;
 }
 
-export async function prepareFoes(gen: Generation, foes: Specie[]): Promise<FoeSet[]> {
+/** A set we already know for an enemy Pokémon (for example read from a screenshot). */
+export interface KnownSet {
+  moves: string[];
+  build?: Build;
+}
+
+/**
+ * Give each enemy a concrete set. Known sets are used as given (moves the game does not have are dropped); everything
+ * else gets its likely attacking moves and a standard competitive build.
+ */
+export async function prepareFoes(gen: Generation, foes: Specie[], known: Record<string, KnownSet> = {}): Promise<FoeSet[]> {
   await loadCalc();
   return Promise.all(foes.map(async (species) => {
-    const moves = await autoMoves(gen, species);
-    const build = suggestBuild(gen, species, moveObjects(gen, moves));
-    return { species, moves, combatant: combatant(species.name, build), speed: computeStats(gen, species, build).spe };
+    const given = known[species.name];
+    const givenMoves = (given?.moves ?? []).filter((m) => gen.moves.get(m));
+    const moves = givenMoves.length ? givenMoves : await autoMoves(gen, species);
+    const build = given?.build ?? suggestBuild(gen, species, moveObjects(gen, moves));
+    return {
+      species, moves, combatant: combatant(species.name, build), speed: computeStats(gen, species, build).spe,
+      known: givenMoves.length > 0 || !!given?.build,
+    };
   }));
 }
 

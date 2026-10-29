@@ -18,6 +18,7 @@ import type { Member } from '../engine/types';
 import type { RuleInstance } from '../engine/rules';
 import { PokemonPicker } from './PokemonPicker';
 import { QuickRules } from './QuickRules';
+import { ScreenshotImport } from './ScreenshotImport';
 import { Sprite, TypeBadge } from './common';
 import { buildFor, resolveSlots, slotsFromResult, TEAM_SIZE } from './state';
 import type { Slot } from './state';
@@ -28,11 +29,14 @@ interface Props {
   rules: RuleInstance[];
   slots: (Slot | null)[];
   enemy: string[];
-  onEnemy: (names: string[]) => void;
+  onEnemy: (names: string[], sets?: Record<string, Slot>) => void;
+  /** Known sets (from a screenshot) for some enemy Pokémon. */
+  enemySets?: Record<string, Slot>;
   /** Replace the player's team and switch back to the builder. */
   onApply: (slots: Slot[]) => void;
   onAddToTeam: (species: string) => void;
   onLockAll: (locked: boolean) => void;
+  onSwitchToAll: () => void;
   onRules: (rules: RuleInstance[]) => void;
   format: Format;
 }
@@ -47,8 +51,9 @@ const pct = (x: number) => (x >= 100 ? '100%+' : `${Math.round(x)}%`);
 
 const fmt = (n: number) => (n > 0 ? `+${n.toFixed(1)}` : n.toFixed(1));
 
-export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, onAddToTeam, onLockAll, onRules, format }: Props) {
+export function EnemyTab({ gen, megas, rules, slots, enemy, enemySets, onEnemy, onApply, onAddToTeam, onLockAll, onSwitchToAll, onRules, format }: Props) {
   const [picking, setPicking] = useState<number | null>(null);
+  const [shot, setShot] = useState(false);
   const [foeSets, setFoeSets] = useState<FoeSet[]>([]);
   const [calcOk, setCalcOk] = useState(calcReady());
   const [real, setReal] = useState(true);
@@ -74,9 +79,10 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
   // Give each enemy Pokémon a concrete set: its likely attacking moves and a standard competitive build.
   useEffect(() => {
     let live = true;
-    prepareFoes(gen, species).then((f) => live && setFoeSets(f));
+    const known = Object.fromEntries(Object.entries(enemySets ?? {}).map(([name, s]) => [name, { moves: s.moves, build: s.build ? { ...s.build, ability: s.ability ?? s.build.ability } : undefined }]));
+    prepareFoes(gen, species, known).then((f) => live && setFoeSets(f));
     return () => { live = false; };
-  }, [gen, species]);
+  }, [gen, species, enemySets]);
 
   const setFor = (name: string) => foeSets.find((f) => f.species.name === name);
   const foes: Foe[] = species.map((s) => ({ species: s, attackTypes: moveTypesOf(gen, setFor(s.name)?.moves ?? [], s) }));
@@ -176,8 +182,11 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
     <div className="layout enemy-layout">
       <div className="main-col">
         <section className="panel">
-          <h2>Enemy team</h2>
-          <p className="muted">Enter the opposing Pokémon. Their likely attacks are estimated from their best learnable moves.</p>
+          <div className="panel-head">
+            <h2>Enemy team</h2>
+            <button className="btn" onClick={() => setShot(true)} title="Load the enemy team from a picture of a team card">📷 Load from screenshot</button>
+          </div>
+          <p className="muted">Enter the opposing Pokémon, or load a picture of their team. Unknown sets are guessed from their best learnable moves.</p>
           <div className="enemy-grid">
             {Array.from({ length: TEAM_SIZE }, (_, i) => {
               const f = foes[i];
@@ -189,7 +198,10 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
                   <div className="enemy-info">
                     <strong>{f.species.name}</strong>
                     <div className="badges">{f.species.types.map((t) => <TypeBadge key={t} type={t} small />)}</div>
-                    <small className="muted">Attacks with: {f.attackTypes.join(', ')}</small>
+                    <small className="muted">
+                      {setFor(f.species.name)?.known ? 'Known set: ' : 'Attacks with: '}
+                      {setFor(f.species.name)?.known ? setFor(f.species.name)!.moves.join(', ') : f.attackTypes.join(', ')}
+                    </small>
                   </div>
                   <button className="icon-btn" onClick={() => setSlot(i, null)} aria-label="Remove">✕</button>
                 </div>
@@ -410,6 +422,13 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, onEnemy, onApply, on
           )}
         </section>
       </aside>
+
+      {shot && (
+        <ScreenshotImport
+          gen={gen} target="enemy" onSwitchToAll={onSwitchToAll} onClose={() => setShot(false)}
+          onEnemy={(names, sets) => { onEnemy(names.slice(0, TEAM_SIZE), sets); setRun(null); }}
+        />
+      )}
 
       {picking !== null && (
         <PokemonPicker

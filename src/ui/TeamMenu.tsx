@@ -4,6 +4,7 @@ import { GAME_BY_ID } from '../engine/games';
 import type { Generation } from '../engine/data';
 import { exportTeam, importTeam } from '../engine/showdown';
 import { Modal, Sprite } from './common';
+import { ScreenshotImport } from './ScreenshotImport';
 import { buildFor, shareUrl, useSavedTeams } from './state';
 import type { BuilderState, Slot } from './state';
 
@@ -18,7 +19,7 @@ const genLabel = (g: number, game?: string) =>
 
 /** Header actions: saved teams, Showdown import/export and a share link. */
 export function TeamMenu({ gen, state, setState }: Props) {
-  const [open, setOpen] = useState<'teams' | 'text' | null>(null);
+  const [open, setOpen] = useState<'teams' | 'text' | 'shot' | null>(null);
   const [name, setName] = useState(state.name);
   const [paste, setPaste] = useState('');
   const [warnings, setWarnings] = useState<string[]>([]);
@@ -49,8 +50,17 @@ export function TeamMenu({ gen, state, setState }: Props) {
     <>
       <button className="btn" onClick={() => { setName(state.name); setOpen('teams'); }}>My teams</button>
       <button className="btn" onClick={() => { setWarnings([]); setOpen('text'); }}>Import / export</button>
+      <button className="btn" onClick={() => setOpen('shot')} title="Load a team from a picture of a team card">📷 From screenshot</button>
       <button className="btn" onClick={() => copy(shareUrl(state), 'Link copied — anyone with it sees this team.')}>Share link</button>
       {note && <span className="toast" role="status">{note}</span>}
+
+      {open === 'shot' && (
+        <ScreenshotImport
+          gen={gen} target="team" onClose={() => setOpen(null)}
+          onSwitchToAll={() => setState((st) => ({ ...st, gen: 0, game: undefined, rules: st.rules.filter((r) => r.type !== 'game_dex') }))}
+          onTeam={(slots) => setState((st) => ({ ...st, slots }))}
+        />
+      )}
 
       {open === 'teams' && (
         <Modal title="My teams" onClose={() => setOpen(null)}>

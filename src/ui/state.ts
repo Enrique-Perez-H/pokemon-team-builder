@@ -26,6 +26,8 @@ export interface BuilderState {
   rules: RuleInstance[];
   /** Species names of the opposing team (up to 6). */
   enemy: string[];
+  /** Known sets for some enemy Pokémon (read from a screenshot), by species name. */
+  enemySets?: Record<string, Slot>;
   /** Optional team name shown in the header and used when saving. */
   name: string;
   /** Singles or doubles: which support jobs matter and how damage is calculated. */
@@ -83,7 +85,7 @@ export function useBuilder() {
     }
   }, [state]);
   // A new team keeps the selected game, Mega setting and enemy team; it clears the team and the rules.
-  return { state, setState, reset: () => setState((st) => ({ ...initial(), gen: st.gen, game: st.game, megas: st.megas, format: st.format, rules: defaultRules(st.game), enemy: st.enemy })) };
+  return { state, setState, reset: () => setState((st) => ({ ...initial(), gen: st.gen, game: st.game, megas: st.megas, format: st.format, rules: defaultRules(st.game), enemy: st.enemy, enemySets: st.enemySets })) };
 }
 
 /** Turn saved slots into engine members; drops anything the generation does not know. */
@@ -140,7 +142,7 @@ export function buildFor(gen: Generation, slot: Slot, species: Specie, moves: Mo
 
 // ---------- Sharing ----------
 
-type Shareable = Pick<BuilderState, 'gen' | 'game' | 'format' | 'megas' | 'slots' | 'rules' | 'enemy' | 'name'>;
+type Shareable = Pick<BuilderState, 'gen' | 'game' | 'format' | 'megas' | 'slots' | 'rules' | 'enemy' | 'enemySets' | 'name'>;
 
 const toB64 = (text: string) => {
   const bytes = new TextEncoder().encode(text);
@@ -154,7 +156,7 @@ const fromB64 = (b64: string) => {
 };
 
 export const encodeShare = (st: Shareable): string =>
-  toB64(JSON.stringify({ gen: st.gen, game: st.game, format: st.format, megas: st.megas, slots: st.slots, rules: st.rules, enemy: st.enemy, name: st.name }));
+  toB64(JSON.stringify({ gen: st.gen, game: st.game, format: st.format, megas: st.megas, slots: st.slots, rules: st.rules, enemy: st.enemy, enemySets: st.enemySets, name: st.name }));
 
 /** Validate and rebuild a state from a shared payload; null when it is not usable. */
 export function decodeShare(payload: string): BuilderState | null {
@@ -165,7 +167,7 @@ export function decodeShare(payload: string): BuilderState | null {
     const game = typeof raw.game === 'string' && GAME_BY_ID[raw.game] ? raw.game : undefined;
     const gen = getGen(raw.gen, game);
     const slots = raw.slots.map((s) => (s && typeof s.species === 'string' && gen.species.get(s.species) ? { ...s, moves: Array.isArray(s.moves) ? s.moves.slice(0, 4) : [] } : null));
-    return { gen: raw.gen, game, format: raw.format === 'doubles' ? 'doubles' : undefined, megas: !!raw.megas, slots, rules: raw.rules.filter((r) => r && typeof r.type === 'string'), enemy: Array.isArray(raw.enemy) ? raw.enemy.filter((e) => typeof e === 'string' && gen.species.get(e)) : [], name: typeof raw.name === 'string' ? raw.name : '' };
+    return { gen: raw.gen, game, format: raw.format === 'doubles' ? 'doubles' : undefined, megas: !!raw.megas, slots, rules: raw.rules.filter((r) => r && typeof r.type === 'string'), enemy: Array.isArray(raw.enemy) ? raw.enemy.filter((e) => typeof e === 'string' && gen.species.get(e)) : [], enemySets: raw.enemySets && typeof raw.enemySets === 'object' ? raw.enemySets : undefined, name: typeof raw.name === 'string' ? raw.name : '' };
   } catch {
     return null;
   }
@@ -217,7 +219,7 @@ export function useSavedTeams() {
       const snapshot: SavedTeam = {
         id: typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : String(Math.random()),
         name: clean, savedAt: Date.now(),
-        state: { gen: st.gen, game: st.game, format: st.format, megas: st.megas, slots: st.slots, rules: st.rules, enemy: st.enemy, name: clean },
+        state: { gen: st.gen, game: st.game, format: st.format, megas: st.megas, slots: st.slots, rules: st.rules, enemy: st.enemy, enemySets: st.enemySets, name: clean },
       };
       // Saving under an existing name overwrites it.
       persist([snapshot, ...teams.filter((t) => t.name !== clean)]);

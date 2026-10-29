@@ -65,6 +65,13 @@ Browser tests need a Chromium: `npm run e2e:install` once (CI does this itself).
   reduction in the calculator and recommends which four to bring and who leads against an enemy team.
 - **Phones**: a compact header, a bottom tab bar, bottom-sheet dialogs, large touch targets and 16px form text, with the
   optimizer right under your team.
+- **Load a team from a screenshot**: on the builder ("📷 From screenshot") and the enemy tab ("📷 Load from screenshot"),
+  drop, paste or choose a picture of a team card. Text is read in your browser (Tesseract, WebAssembly; nothing is
+  uploaded), the names are located and matched against the Pokémon, moves, items and abilities of the game (each Pokémon's own
+  learnset and abilities first, so OCR typos resolve to real names), and you review the result before it loads: fix a
+  Pokémon, edit its level, add or remove moves. For your own team it fills moves, nature, item, ability, level and EVs;
+  for the enemy it stores a *known set* that the damage tables, counters and counter-team search use instead of guesses.
+  Pokémon missing from the selected game can be loaded by switching to "Every generation".
 - The picker shows **suggestions** that patch the team's weaknesses and coverage gaps.
 
 ## Deploy to GitHub Pages / install as an app
@@ -77,6 +84,13 @@ branch directly does not work: the app must be built first.) It is then live at
 
 The site is a PWA (manifest, icons, service worker): open it in Chrome/Edge/Safari and use *Install app* /
 *Add to Home Screen*. After the first visit it works offline (sprites load from the network and are cached as seen).
+
+## Screenshot import
+
+The text reader is the `tesseract.js` WebAssembly build with the English model. `scripts/copy-ocr-assets.mjs` copies its files
+from `node_modules` into `public/ocr/` before `dev` and `build` (they are not committed). They are fetched, about 7 MB, only
+the first time the feature is used, then cached. The reading logic is `src/engine/screenshot.ts` (pure functions over OCR
+words, unit-tested against a real OCR capture in `src/engine/__fixtures__`); `src/ui/ocr.ts` runs the engine.
 
 ## Game data
 

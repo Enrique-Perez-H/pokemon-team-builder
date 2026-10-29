@@ -42,10 +42,11 @@ interface Props {
   gen: Generation;
   slots: (Slot | null)[];
   enemy: string[];
+  enemySets?: Record<string, Slot>;
   format: Format;
 }
 
-export function CalcTab({ gen, slots, enemy, format }: Props) {
+export function CalcTab({ gen, slots, enemy, enemySets, format }: Props) {
   const [att, setAtt] = useState<Side | null>(null);
   const [def, setDef] = useState<Side | null>(null);
   const [weather, setWeather] = useState<Weather>('');
@@ -74,6 +75,11 @@ export function CalcTab({ gen, slots, enemy, format }: Props) {
   const fromSpecies = async (name: string): Promise<Side | null> => {
     const sp = gen.species.get(name);
     if (!sp) return null;
+    // A set read from a screenshot is used as it is.
+    const known = enemySets?.[name];
+    if (known?.build && known.moves.length) {
+      return { species: sp.name, build: { ...known.build, ability: known.ability ?? known.build.ability }, moves: known.moves, boosts: NO_BOOSTS(), status: '', tera: '', reflect: false, lightScreen: false, auroraVeil: false };
+    }
     const moves = await autoMoves(gen, sp);
     const mv = moves.flatMap((n) => { const m = gen.moves.get(n); return m ? [m] : []; });
     return { species: sp.name, build: suggestBuild(gen, sp, mv), moves, boosts: NO_BOOSTS(), status: '', tera: '', reflect: false, lightScreen: false, auroraVeil: false };

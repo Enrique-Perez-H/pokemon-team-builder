@@ -232,16 +232,23 @@ export function App() {
           rules={state.rules}
           slots={state.slots}
           enemy={state.enemy}
-          onEnemy={(enemy) => setState((st) => ({ ...st, enemy }))}
+          enemySets={state.enemySets}
+          onEnemy={(enemy, sets) => setState((st) => ({
+            ...st,
+            enemy,
+            // Known sets stay only for Pokémon still on the enemy team; a screenshot supplies fresh ones.
+            enemySets: Object.fromEntries(Object.entries({ ...st.enemySets, ...sets }).filter(([name]) => enemy.includes(name))),
+          }))}
           onApply={(slots) => { setState((st) => ({ ...st, slots })); setTab('build'); }}
           onAddToTeam={addToTeam}
           onLockAll={setLocks}
+          onSwitchToAll={() => setState((st) => ({ ...st, gen: ALL_GENS, game: undefined, rules: st.rules.filter((r) => r.type !== 'game_dex') }))}
           onRules={(rules) => setState((st) => ({ ...st, rules }))}
         />
       )}
 
       {tab === 'calc' && (
-        <div className="calc-wrap"><CalcTab gen={gen} slots={state.slots} enemy={state.enemy} format={format} /></div>
+        <div className="calc-wrap"><CalcTab gen={gen} slots={state.slots} enemy={state.enemy} enemySets={state.enemySets} format={format} /></div>
       )}
 
       {tab === 'build' && (

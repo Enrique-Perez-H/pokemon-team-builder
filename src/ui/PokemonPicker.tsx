@@ -46,7 +46,8 @@ export function PokemonPicker({ gen, megas, rules, slots, slot, suggestions, onP
 
   return (
     <Modal title={`Choose Pokémon — slot ${slot + 1}`} onClose={onClose} wide>
-      {suggestions.length > 0 && (
+      {/* Suggestions help while browsing; once you search or filter they only push your results out of view. */}
+      {suggestions.length > 0 && !q.trim() && !types.length && (
         <div className="suggest-strip">
           <span className="muted">Suggested for this team</span>
           <div className="suggest-row">
