@@ -32,6 +32,7 @@ export const GAME_LIST: GameInfo[] = [
   { id: 'brilliant-diamond-shining-pearl', label: 'Brilliant Diamond / Shining Pearl', gen: 8, megas: false },
   { id: 'legends-arceus', label: 'Legends: Arceus', gen: 8, megas: false },
   { id: 'scarlet-violet', label: 'Scarlet / Violet (+ DLC)', gen: 9, megas: false },
+  { id: 'radical-red', label: 'Radical Red (FireRed hack, unofficial)', gen: 8, megas: true },
   { id: 'legends-za', label: 'Legends: Z-A (+ DLC)', gen: 9, megas: true },
 ];
 
@@ -93,8 +94,8 @@ export function loadGameData(id: string, baseUrl = '/'): Promise<GameData> {
 
 /** Regional forms only exist in the games that feature their region. */
 const REGIONAL_FORMS: [RegExp, string[]][] = [
-  [/^Alola/, ['sun-moon', 'ultra-sun-ultra-moon', 'lets-go']],
-  [/^Galar/, ['sword-shield']],
+  [/^Alola/, ['sun-moon', 'ultra-sun-ultra-moon', 'lets-go', 'radical-red']],
+  [/^Galar/, ['sword-shield', 'radical-red']],
   [/^Hisui/, ['legends-arceus', 'scarlet-violet', 'legends-za']],
   [/^Paldea/, ['scarlet-violet']],
 ];

@@ -72,6 +72,9 @@ Browser tests need a Chromium: `npm run e2e:install` once (CI does this itself).
   Pokémon, edit its level, add or remove moves. For your own team it fills moves, nature, item, ability, level and EVs;
   for the enemy it stores a *known set* that the damage tables, counters and counter-team search use instead of guesses.
   Pokémon missing from the selected game can be loaded by switching to "Every generation".
+- **Radical Red** (the unofficial FireRed hack) is in the game list: Gen 8 rules, Pokémon up to Gen 8 including Megas and
+  the Alolan and Galarian forms. Its learnsets and custom trainer teams are not included, so moves come from the Gen 8 data
+  and no trainers can be loaded.
 - **Gym leaders, Elite Four, Champions and Kahunas** for every main-series game from Red/Blue to Scarlet/Violet: on the
   enemy tab, "🏆 Load a trainer" lists them in the order they are fought and loads the team with their real levels,
   abilities, held items, Tera types and moves, so the counters and damage tables use what they actually do. Repeat
