@@ -233,6 +233,7 @@ export function App() {
           slots={state.slots}
           enemy={state.enemy}
           enemySets={state.enemySets}
+          game={state.game}
           onEnemy={(enemy, sets) => setState((st) => ({
             ...st,
             enemy,

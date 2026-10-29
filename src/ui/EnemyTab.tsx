@@ -19,6 +19,7 @@ import type { RuleInstance } from '../engine/rules';
 import { PokemonPicker } from './PokemonPicker';
 import { QuickRules } from './QuickRules';
 import { ScreenshotImport } from './ScreenshotImport';
+import { TrainerPicker } from './TrainerPicker';
 import { Sprite, TypeBadge } from './common';
 import { buildFor, resolveSlots, slotsFromResult, TEAM_SIZE } from './state';
 import type { Slot } from './state';
@@ -32,6 +33,7 @@ interface Props {
   onEnemy: (names: string[], sets?: Record<string, Slot>) => void;
   /** Known sets (from a screenshot) for some enemy Pokémon. */
   enemySets?: Record<string, Slot>;
+  game?: string;
   /** Replace the player's team and switch back to the builder. */
   onApply: (slots: Slot[]) => void;
   onAddToTeam: (species: string) => void;
@@ -51,9 +53,10 @@ const pct = (x: number) => (x >= 100 ? '100%+' : `${Math.round(x)}%`);
 
 const fmt = (n: number) => (n > 0 ? `+${n.toFixed(1)}` : n.toFixed(1));
 
-export function EnemyTab({ gen, megas, rules, slots, enemy, enemySets, onEnemy, onApply, onAddToTeam, onLockAll, onSwitchToAll, onRules, format }: Props) {
+export function EnemyTab({ gen, megas, rules, slots, enemy, enemySets, onEnemy, onApply, onAddToTeam, onLockAll, onSwitchToAll, onRules, format, game }: Props) {
   const [picking, setPicking] = useState<number | null>(null);
   const [shot, setShot] = useState(false);
+  const [trainer, setTrainer] = useState(false);
   const [foeSets, setFoeSets] = useState<FoeSet[]>([]);
   const [calcOk, setCalcOk] = useState(calcReady());
   const [real, setReal] = useState(true);
@@ -184,6 +187,7 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, enemySets, onEnemy, 
         <section className="panel">
           <div className="panel-head">
             <h2>Enemy team</h2>
+            <button className="btn" onClick={() => setTrainer(true)} title="Load a gym leader, Elite Four member or Champion">🏆 Load a trainer</button>
             <button className="btn" onClick={() => setShot(true)} title="Load the enemy team from a picture of a team card">📷 Load from screenshot</button>
           </div>
           <p className="muted">Enter the opposing Pokémon, or load a picture of their team. Unknown sets are guessed from their best learnable moves.</p>
@@ -422,6 +426,13 @@ export function EnemyTab({ gen, megas, rules, slots, enemy, enemySets, onEnemy, 
           )}
         </section>
       </aside>
+
+      {trainer && (
+        <TrainerPicker
+          gen={gen} game={game} onSwitchToAll={onSwitchToAll} onClose={() => setTrainer(false)}
+          onEnemy={(names, sets) => { onEnemy(names.slice(0, TEAM_SIZE), sets); setRun(null); }}
+        />
+      )}
 
       {shot && (
         <ScreenshotImport

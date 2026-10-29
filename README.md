@@ -72,6 +72,10 @@ Browser tests need a Chromium: `npm run e2e:install` once (CI does this itself).
   Pokémon, edit its level, add or remove moves. For your own team it fills moves, nature, item, ability, level and EVs;
   for the enemy it stores a *known set* that the damage tables, counters and counter-team search use instead of guesses.
   Pokémon missing from the selected game can be loaded by switching to "Every generation".
+- **Gym leaders, Elite Four, Champions and Kahunas** for every main-series game from Red/Blue to Scarlet/Violet: on the
+  enemy tab, "🏆 Load a trainer" lists them in the order they are fought and loads the team with their real levels,
+  abilities, held items, Tera types and moves, so the counters and damage tables use what they actually do. Repeat
+  battles and rematches are listed with their stronger teams.
 - The picker shows **suggestions** that patch the team's weaknesses and coverage gaps.
 
 ## Deploy to GitHub Pages / install as an app
@@ -91,6 +95,14 @@ The text reader is the `tesseract.js` WebAssembly build with the English model. 
 from `node_modules` into `public/ocr/` before `dev` and `build` (they are not committed). They are fetched, about 7 MB, only
 the first time the feature is used, then cached. The reading logic is `src/engine/screenshot.ts` (pure functions over OCR
 words, unit-tested against a real OCR capture in `src/engine/__fixtures__`); `src/ui/ocr.ts` runs the engine.
+
+## Trainer teams
+
+`public/data/trainers/<game>.json` is generated from [Bulbapedia](https://bulbapedia.bulbagarden.net/) trainer pages
+(text available under [CC BY-NC-SA 2.5](https://creativecommons.org/licenses/by-nc-sa/2.5/)). `scripts/fetch-trainer-pages.mjs <cache dir>`
+downloads the pages once (politely, one request per second) and `scripts/build-trainer-data.mjs <cache dir> public/data/trainers`
+turns the `{{Party}}` and `{{Pokémon}}` templates into JSON using `scripts/trainer-parser.mjs`. Battle-facility and side-series
+teams are left out. The data is committed, so neither script runs during a normal build.
 
 ## Game data
 
